@@ -1,0 +1,33 @@
+import "io.vx";
+
+func main() -> i32 {
+    io.println("Testing Control Flow:");
+    
+    // If/Else
+    var i32 x = 10;
+    if (x > 5) {
+        io.println("x is > 5");
+    } else {
+        io.println("x is <= 5");
+    }
+    
+    // While
+    io.print("While loop (0-4): ");
+    var i32 i = 0;
+    while (i < 5) {
+        i = i + 1;
+        io.print(i);
+        io.print(" ");
+    }
+    io.println("");
+    
+    // For
+    io.print("For loop (0-4): ");
+    for (var i32 j = 0; j < 5; j = j + 1) {
+        io.print(j);
+        io.print(" ");
+    }
+    io.println("");
+    
+    return 0;
+}

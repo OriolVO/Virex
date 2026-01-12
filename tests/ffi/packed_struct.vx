@@ -1,0 +1,46 @@
+// tests/ffi/packed_struct.vx
+// Test for packed struct attribute
+
+module "packed_struct_test";
+
+import "io.vx" as io;
+
+extern func exit(i32 code) -> void;
+
+// Define a packed struct
+// Layout:
+// a: 1 byte
+// b: 4 bytes
+// c: 1 byte
+// Total packed size: 6 bytes
+
+extern func verify_packed_struct(Data* ptr) -> i32;
+extern func verify_struct_size(i32 expected_size) -> i32;
+
+packed struct Data {
+    u8 a;
+    u32 b;
+    u8 c;
+};
+
+func main() -> i32 {
+    var Data d;
+    d.a = 255;
+    d.b = 2864434397; // 0xAABBCCDD
+    d.c = 127;
+    
+    // Check struct size logic from C side
+    if (verify_struct_size(6) != 1) {
+        io.println("FAIL: Struct size is not 6 bytes (packed attribute failed)");
+        exit(1);
+    }
+    
+    // Check offsets and values from C side
+    if (verify_packed_struct(&d) != 1) {
+        io.println("FAIL: Packed struct verification failed in C");
+        exit(1);
+    }
+    
+    io.println("PASS: Packed struct test passed");
+    return 0; // ffi_structs.vx returns from main
+}

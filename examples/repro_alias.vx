@@ -1,0 +1,6 @@
+import "io.vx";
+
+func main() -> i32 {
+    io.println("Reproduction test");
+    return 0;
+}

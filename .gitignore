@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+*.o
+*.out
+virex
+
+# Generated code
+virex_out.c
+
+# Temporary test files
+test_*.vx
+circular_a
+test_escape
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Debug files
+*.dSYM/
+vgcore.*
+core

@@ -1,0 +1,10 @@
+module "main";
+
+import "math_utils.vx" as math;
+import "io.vx" as io;
+
+func main() -> i32 {
+    var i32 sum = math.add(10, 20);
+    io.println(sum);
+    return 0;
+}

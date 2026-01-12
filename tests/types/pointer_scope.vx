@@ -1,0 +1,46 @@
+
+module "pointer_scope";
+import "io.vx" as io;
+
+// Testing pointer passing and modification
+func modify_ptr(i32* p) {
+    unsafe {
+        *p = *p + 1;
+    }
+}
+
+// Function returning pointer - tests pointer return type codegen
+func get_ptr_to_var(i32* x) -> i32* {
+    return x;
+}
+
+func main() -> i32 {
+    io.println("Testing pointer scopes...");
+
+    var i32 x = 10;
+    modify_ptr(&x);
+    
+    if (x != 11) {
+         io.println("FAIL: pointer modification failed");
+         return 1;
+    }
+    
+    // Test pointer return type
+    var i32 val = 50;
+    var i32* p = get_ptr_to_var(&val);
+    unsafe {
+        if (*p != 50) {
+            io.println("FAIL: pointer return mismatch");
+            return 1;
+        }
+        *p = 100;
+    }
+    
+    if (val != 100) {
+        io.println("FAIL: pointer modification via returned pointer failed");
+        return 1;
+    }
+
+    io.println("PASS: Pointer scope tests passed");
+    return 0;
+}

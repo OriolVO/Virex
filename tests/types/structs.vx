@@ -1,0 +1,25 @@
+import "io.vx";
+
+struct Point {
+    i32 x;
+    i32 y;
+};
+
+func main() -> i32 {
+    io.println("Testing Structs:");
+    
+    var Point p;
+    p.x = 10;
+    p.y = 20;
+    
+    if (p.x == 10 && p.y == 20) {
+        io.println("Struct members set correctly.");
+        io.print("p.x: "); io.println(p.x);
+        io.print("p.y: "); io.println(p.y);
+    } else {
+        io.println("Error: Struct member mismatch.");
+        return 1;
+    }
+    
+    return 0;
+}

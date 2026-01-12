@@ -1,0 +1,88 @@
+// tests/basics/precedence.vx
+// Test basic operator precedence and nesting
+
+import "io.vx" as io;
+
+extern func exit(i32 code) -> void;
+
+func main() -> i32 {
+    io.println("Running precedence checks...");
+
+    // 1. Arithmetic Precedence (* / % > + -)
+    // 2 + 3 * 4 = 14, not 20
+    var i32 a = 2 + 3 * 4;
+    if (a != 14) {
+        io.println("FAIL: 2 + 3 * 4 != 14");
+        exit(1);
+    }
+
+    // (2 + 3) * 4 = 20
+    var i32 b = (2 + 3) * 4;
+    if (b != 20) {
+        io.println("FAIL: (2 + 3) * 4 != 20");
+        exit(1);
+    }
+    
+    // 10 - 4 - 2 = 4 (Left associativity), not 8 (10 - (4 - 2))
+    var i32 c = 10 - 4 - 2;
+    if (c != 4) {
+        io.println("FAIL: 10 - 4 - 2 != 4 (Associativity)");
+        exit(1);
+    }
+
+    // 2. Comparison vs Arithmetic
+    // 5 + 5 > 9 -> 10 > 9 -> true
+    if (!(5 + 5 > 9)) {
+        io.println("FAIL: 5 + 5 > 9 should be true");
+        exit(1);
+    }
+    
+    // 3. Logical vs Comparison
+    // 1 == 1 && 2 == 2 -> true
+    if (!(1 == 1 && 2 == 2)) {
+        io.println("FAIL: 1==1 && 2==2 should be true");
+        exit(1);
+    }
+    
+    // 1 == 2 || 2 == 2 && 1 == 1 -> true?
+    // && > || usually.
+    // false || (true && true) -> true.
+    // (false || true) && true -> true. 
+    // Wait, let's test strict precedence.
+    // 1 == 2 || 2 == 2 && 1 == 2 -> false || (true && false) -> false.
+    // (1 == 2 || 2 == 2) && 1 == 2 -> true && false -> false.
+    // Need a case where they differ.
+    // true || false && false
+    // (true || false) && false -> false
+    // true || (false && false) -> true  <-- Typical C precedence
+    
+    if (!(true || false && false)) {
+        io.println("FAIL: && should have higher precedence than ||");
+        exit(1);
+    }
+    
+    // 4. Unary Operators
+    // -3 * 2 = -6
+    var i32 d = -3 * 2;
+    if (d != -6) {
+        io.println("FAIL: -3 * 2 != -6");
+        exit(1);
+    }
+    
+    // !true == false -> true
+    if (!(!true == false)) {
+        io.println("FAIL: !true == false");
+        exit(1);
+    }
+
+    // 5. Complex Nesting
+    var i32 val = ((1 + 2) * (3 + (4 - 2))); 
+    // 3 * (3 + 2) = 3 * 5 = 15
+    if (val != 15) {
+        io.println("FAIL: Complex nesting mismatch");
+        exit(1);
+    }
+    
+    io.println("PASS: Precedence tests passed");
+    return 0;
+}

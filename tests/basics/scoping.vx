@@ -1,0 +1,24 @@
+import "io.vx";
+
+func main() -> i32 {
+    io.println("Testing Scoping:");
+    
+    var i32 x = 10;
+    io.print("Outer x: "); io.println(x);
+    
+    {
+        var i32 x = 20; // Shadowing
+        io.print("Inner x: "); io.println(x);
+        
+        {
+            var i32 x = 30;
+            io.print("In-inner x: "); io.println(x);
+        }
+        
+        io.print("Back to Inner x: "); io.println(x);
+    }
+    
+    io.print("Back to Outer x: "); io.println(x);
+    
+    return 0;
+}

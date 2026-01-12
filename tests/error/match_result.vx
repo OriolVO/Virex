@@ -1,0 +1,20 @@
+func check(result<i32, i32> r) -> i32 {
+    match r {
+        ok(v) => { return v; }
+        err(e) => { return e + 100; }
+    }
+    return 0;
+}
+
+func main() -> i32 {
+    var result<i32, i32> r1 = result::ok(10);
+    var i32 v1 = check(r1); // should be 10
+    
+    var result<i32, i32> r2 = result::err(5);
+    var i32 v2 = check(r2); // should be 105
+    
+    if (v1 != 10) return 1;
+    if (v2 != 105) return 2;
+    
+    return 0;
+}

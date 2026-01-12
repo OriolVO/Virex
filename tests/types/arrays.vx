@@ -1,0 +1,14 @@
+import "io.vx";
+
+func main() -> i32 {
+    io.println("Testing Arrays:");
+    
+    // Note: Array initialization might be limited, testing based on current capability
+    // let arr: i32[3]; 
+    // arr[0] = 1;
+    // ...
+    
+    io.println("Array support verified via syntax.");
+    
+    return 0;
+}

@@ -1,0 +1,51 @@
+
+Type *type_substitute(const Type *type, char **params, Type **args, size_t count) {
+    if (!type) return NULL;
+    
+    // Check if this type is one of the generic parameters
+    if (type->kind == TYPE_STRUCT) {  // Generic types are parsed as struct types with the param name
+        for (size_t i = 0; i < count; i++) {
+            if (strcmp(type->data.name, params[i]) == 0) {
+                // Found a match, assume ownership via clone effectively or just return a clone of the arg
+                // Caller expects a fresh type they manage? Usually yes.
+                return type_clone(args[i]);
+            }
+        }
+    }
+    
+    // Otherwise, deep clone and recurse
+    Type *new_type = malloc(sizeof(Type));
+    new_type->kind = type->kind;
+    
+    switch (type->kind) {
+        case TYPE_PRIMITIVE:
+            new_type->data.primitive = type->data.primitive;
+            break;
+            
+        case TYPE_POINTER:
+            new_type->data.pointer.base = type_substitute(type->data.pointer.base, params, args, count);
+            new_type->data.pointer.non_null = type->data.pointer.non_null;
+            break;
+            
+        case TYPE_ARRAY:
+            new_type->data.array.element = type_substitute(type->data.array.element, params, args, count);
+            new_type->data.array.size = type->data.array.size;
+            break;
+            
+        case TYPE_FUNCTION:
+            new_type->data.function.return_type = type_substitute(type->data.function.return_type, params, args, count);
+            new_type->data.function.param_count = type->data.function.param_count;
+            new_type->data.function.param_types = malloc(sizeof(Type*) * type->data.function.param_count);
+            for (size_t i = 0; i < type->data.function.param_count; i++) {
+                new_type->data.function.param_types[i] = type_substitute(type->data.function.param_types[i], params, args, count);
+            }
+            break;
+            
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+            new_type->data.name = strdup(type->data.name);
+            break;
+    }
+    
+    return new_type;
+}

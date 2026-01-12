@@ -1,0 +1,10 @@
+// Hello World example using Virex standard library
+
+import "io.vx";
+
+func main() -> i32 {
+    io.println("Hello, Virex!");
+    io.println("This is a systems programming language with generic print!");
+    io.println(42);
+    return 0;
+}

@@ -1,0 +1,81 @@
+// tests/types/enum_complex.vx
+// Test large enums and enums in complex structures
+
+import "io.vx" as io;
+
+extern func exit(i32 code) -> void;
+
+// 1. Large Enum (50+ variants)
+enum LargeEnum {
+    V0, V1, V2, V3, V4, V5, V6, V7, V8, V9,
+    V10, V11, V12, V13, V14, V15, V16, V17, V18, V19,
+    V20, V21, V22, V23, V24, V25, V26, V27, V28, V29,
+    V30, V31, V32, V33, V34, V35, V36, V37, V38, V39,
+    V40, V41, V42, V43, V44, V45, V46, V47, V48, V49,
+    V50
+};
+
+// 2. Enum in Struct
+struct Config {
+    i32 id;
+    LargeEnum status;
+    bool active;
+};
+
+// 3. Array of Enums (Complex structure)
+struct Batch {
+    LargeEnum[5] processing;
+};
+
+func main() -> i32 {
+    io.println("Testing large enums...");
+
+    // Test specific values
+    var LargeEnum e1 = V0;
+    var LargeEnum e2 = V50;
+    
+    // In C, enums are likely 0-indexed ints. V0=0, V50=50.
+    // We can cast to i32 to check value if casting is supported, or use if/else.
+    // Since we don't have explicit cast syntax yet (?), we rely on implicit int conversion or equality.
+    
+    if (e1 != V0) {
+        io.println("FAIL: V0 mismatch");
+        exit(1);
+    }
+    
+    if (e2 != V50) {
+        io.println("FAIL: V50 mismatch");
+        exit(1);
+    }
+    
+    // Test struct embedding
+    var Config c;
+    c.id = 1;
+    c.status = V25;
+    c.active = true;
+    
+    if (c.status != V25) {
+        io.println("FAIL: Struct enum field mismatch");
+        exit(1);
+    }
+    
+    // Test modification
+    c.status = V42;
+    if (c.status != V42) {
+        io.println("FAIL: Struct enum modification failed");
+        exit(1);
+    }
+    
+    // Test array of enums
+    var Batch b;
+    b.processing[0] = V10;
+    b.processing[4] = V20;
+    
+    if (b.processing[0] != V10 || b.processing[4] != V20) {
+        io.println("FAIL: Array of enums mismatch");
+        exit(1);
+    }
+
+    io.println("PASS: Large enum tests passed");
+    return 0;
+}

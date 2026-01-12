@@ -1,0 +1,21 @@
+module "module_nesting_test";
+
+import "io.vx";
+import "inner_helper.vx" as inner;
+import "deep/very_deep_helper.vx" as deep;
+
+func main() -> i32 {
+    io.print("Inner val: ");
+    io.println(inner.get_val());
+    
+    io.print("Deep val: ");
+    io.println(deep.deep_val);
+    
+    if (inner.get_val() == 42 && deep.deep_val == 100) {
+        io.println("Module nesting test passed!");
+        return 0;
+    }
+    
+    io.println("Module nesting test failed!");
+    return 1;
+}

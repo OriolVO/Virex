@@ -1,0 +1,7 @@
+module "circular_b";
+
+import "circular_a.vx" as a;
+
+public func bar() -> void {
+    a.foo();
+}

@@ -1,0 +1,8 @@
+
+module "lib";
+
+// Generic function
+public func identity<T>(T val) -> T {
+    return val;
+}
+

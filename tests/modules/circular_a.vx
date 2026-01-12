@@ -1,0 +1,12 @@
+module "circular_a";
+
+import "circular_b.vx" as b;
+
+public func foo() -> void {
+    b.bar();
+}
+
+func main() -> i32 {
+    foo();
+    return 0;
+}

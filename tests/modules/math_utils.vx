@@ -1,0 +1,13 @@
+module "math_utils";
+
+public func add(i32 x, i32 y) -> i32 {
+    return x + y;
+}
+
+func private_sub(i32 x, i32 y) -> i32 {
+    return x - y;
+}
+
+func main() -> i32 {
+    return 0;
+}

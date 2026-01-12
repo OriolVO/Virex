@@ -1,0 +1,13 @@
+// std::os - Operating System module
+// Provides OS interaction functions
+
+module "std::os";
+
+// Exit program with given exit code
+extern func exit(i32 code) -> void;
+
+// Get number of command line arguments
+extern func get_argc() -> i32;
+
+// Get command line argument at index
+extern func get_argv(i32 index) -> cstring;

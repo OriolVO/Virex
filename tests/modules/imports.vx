@@ -1,0 +1,8 @@
+import "io.vx" as std_io;
+import "export_helper.vx" as helper;
+
+func main() -> i32 {
+    std_io.println("Testing Imports and Aliases:");
+    helper.public_func();
+    return 0;
+}

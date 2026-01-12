@@ -1,0 +1,70 @@
+module "nested_structs_test";
+
+import "io.vx";
+
+struct Vec2 {
+    i32 x;
+    i32 y;
+};
+
+struct Rect {
+    Vec2 pos;
+    Vec2 size;
+};
+
+struct Node {
+    i32 val;
+    Node* next;
+};
+
+func main() -> i32 {
+    var Rect r;
+    r.pos.x = 10;
+    r.pos.y = 20;
+    r.size.x = 100;
+    r.size.y = 200;
+
+    io.print("Rect pos: ");
+    io.print(r.pos.x);
+    io.print(", ");
+    io.println(r.pos.y);
+
+    io.print("Rect size: ");
+    io.print(r.size.x);
+    io.print(", ");
+    io.println(r.size.y);
+
+    // Test pointers and nested access
+    var Rect* pr = &r;
+    io.print("Pointer access r.pos.x: ");
+    unsafe {
+        io.println(pr->pos.x);
+    }
+
+    // Test self-referential struct (Node)
+    var Node n1;
+    var Node n2;
+    n1.val = 1;
+    n2.val = 2;
+    n1.next = &n2;
+    n2.next = null;
+
+    io.print("Node 1 val: ");
+    io.println(n1.val);
+    io.print("Node 2 val (via n1->next): ");
+    unsafe {
+        io.println(n1.next->val);
+    }
+
+    if (r.pos.x == 10 && r.size.y == 200 && n1.val == 1) {
+        unsafe {
+            if (n1.next->val == 2) {
+                io.println("Nested structs and pointers test passed!");
+                return 0;
+            }
+        }
+    }
+
+    io.println("Nested structs and pointers test failed!");
+    return 1;
+}

@@ -1,0 +1,4 @@
+func main() -> i32 {
+    fail "Something went wrong";
+    return 0;
+}

@@ -1,0 +1,19 @@
+module "result";
+
+public func unwrap<T, E>(result<T, E> r) -> T {
+    match r {
+        ok(v) => { return v; }
+        err(e) => {
+             fail "called `unwrap` on an `err` value";
+        }
+    }
+}
+
+public func expect<T, E>(result<T, E> r, cstring msg) -> T {
+    match r {
+        ok(v) => { return v; }
+        err(e) => {
+             fail msg;
+        }
+    }
+}

@@ -1,0 +1,34 @@
+module "string_ffi_test";
+
+import "io.vx";
+
+extern func strlen(cstring s) -> i32;
+extern func strcmp(cstring s1, cstring s2) -> i32;
+
+func main() -> i32 {
+    var cstring s1 = "hello";
+    var cstring s2 = "world";
+    var cstring s3 = "hello";
+
+    io.println("Testing string FFI (strlen/strcmp):");
+
+    var i32 len1 = strlen(s1);
+    io.print("Length of 'hello': ");
+    io.println(len1);
+
+    var i32 cmp1 = strcmp(s1, s2);
+    io.print("strcmp('hello', 'world'): ");
+    io.println(cmp1);
+
+    var i32 cmp2 = strcmp(s1, s3);
+    io.print("strcmp('hello', 'hello'): ");
+    io.println(cmp2);
+
+    if (len1 == 5 && cmp1 != 0 && cmp2 == 0) {
+        io.println("String FFI tests passed!");
+        return 0;
+    } else {
+        io.println("String FFI tests failed!");
+        return 1;
+    }
+}

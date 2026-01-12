@@ -1,0 +1,7 @@
+public func add(i32 a, i32 b) -> i32 {
+    return a + b;
+}
+
+func private_helper() -> void {
+    // This should not be accessible from outside
+}

@@ -1,0 +1,12 @@
+import "io.vx";
+
+func main() -> i32 {
+    io.println("Testing Smart Print Dispatch:");
+    
+    io.println(100);
+    io.println("String works");
+    io.println(true);
+    io.println(false);
+    
+    return 0;
+}

@@ -1,0 +1,15 @@
+import "result.vx" as res;
+
+func main() -> i32 {
+    var result<i32, i32> r1 = result::ok(10);
+    var i32 v1 = res.unwrap(r1);
+    
+    if (v1 != 10) return 1;
+    
+    var result<i32, i32> r2 = result::ok(20);
+    var i32 v2 = res.expect(r2, "should not fail");
+    
+    if (v2 != 20) return 2;
+    
+    return 0;
+}

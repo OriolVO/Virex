@@ -1,0 +1,8 @@
+module "sanitized::module::test";
+
+import "io.vx";
+
+func main() -> i32 {
+    io.println("Testing Module Name Sanitization:");
+    return 0;
+}

@@ -1,0 +1,41 @@
+module "ffi_structs_test";
+
+import "io.vx";
+
+struct Point {
+    i32 x;
+    i32 y;
+};
+
+extern func print_point(Point p);
+extern func offset_point(Point p, i32 dx, i32 dy) -> Point;
+
+func main() -> i32 {
+    var Point p;
+    p.x = 10;
+    p.y = 20;
+    
+    io.println("Virex calling C print_point:");
+    unsafe {
+        print_point(p);
+    }
+    
+    io.println("Virex calling C offset_point:");
+    var Point p2;
+    unsafe {
+        p2 = offset_point(p, 5, 5);
+    }
+    
+    io.print("p2.x: ");
+    io.println(p2.x);
+    io.print("p2.y: ");
+    io.println(p2.y);
+    
+    if (p2.x == 15 && p2.y == 25) {
+        io.println("FFI structs test passed!");
+        return 0;
+    }
+    
+    io.println("FFI structs test failed!");
+    return 1;
+}

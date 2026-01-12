@@ -1,0 +1,19 @@
+// std::mem - Generic Memory Management Module
+// Type-safe memory allocation and manipulation
+
+module std::mem;
+
+// Allocate memory for count elements of type T
+extern func alloc<T>(i64 count) -> *T;
+
+// Free allocated memory
+extern func free<T>(*T ptr) -> void;
+
+// Copy count elements from src to dst
+extern func copy<T>(*T dst, *T src, i64 count) -> void;
+
+// Set count elements of dst to value
+extern func set<T>(*T dst, T value, i64 count) -> void;
+
+// Zero out count elements
+extern func zero<T>(*T dst, i64 count) -> void;

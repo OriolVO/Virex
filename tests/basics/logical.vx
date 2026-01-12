@@ -1,0 +1,17 @@
+import "io.vx";
+
+func main() -> i32 {
+    io.println("Testing Logical Operators:");
+    
+    var i32 a = 10;
+    var i32 b = 20;
+    
+    io.print("10 < 20  : "); io.println(a < b);
+    io.print("10 > 20  : "); io.println(a > b);
+    io.print("10 <= 10 : "); io.println(10 <= 10);
+    io.print("10 >= 20 : "); io.println(a >= b);
+    io.print("10 == 10 : "); io.println(10 == 10);
+    io.print("10 != 20 : "); io.println(a != b);
+    
+    return 0;
+}

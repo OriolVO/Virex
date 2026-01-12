@@ -1,0 +1,3 @@
+module "inner";
+var i32 val = 42;
+public func get_val() -> i32 { return val; }

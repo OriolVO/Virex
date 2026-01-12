@@ -1,0 +1,7 @@
+module "std::io";
+
+// Generic print functions
+// The compiler automatically dispatches these to specialized runtime functions
+// (virex_print_i32, virex_print_str, etc.) based on the argument type.
+public extern func print<T>(T value) -> void;
+public extern func println<T>(T value) -> void;

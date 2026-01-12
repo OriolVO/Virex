@@ -1,0 +1,2 @@
+module "deep::very_deep";
+public var i32 deep_val = 100;

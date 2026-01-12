@@ -1,0 +1,15 @@
+
+func make_ok() -> result<i32, i32> {
+    return result::ok(42);
+}
+
+func make_err() -> result<i32, i32> {
+    return result::err(1);
+}
+
+func main() -> i32 {
+    var result<i32, i32> r1 = make_ok();
+    var result<i32, i32> r2 = make_err();
+
+    return 0;
+}

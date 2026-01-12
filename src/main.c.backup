@@ -1,0 +1,247 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <libgen.h>
+#include "../include/virex.h"
+#include "../include/lexer.h"
+#include "../include/token.h"
+#include "../include/error.h"
+#include "../include/parser.h"
+#include "../include/ast.h"
+#include "../include/semantic.h"
+#include "../include/ir.h"
+#include "../include/irgen.h"
+#include "../include/iropt.h"
+#include "../include/codegen.h"
+#include "../include/compiler.h"
+
+void print_version(void) {
+    printf("Virex compiler v%s\n", VIREX_VERSION);
+}
+
+void print_help(void) {
+    printf("Virex - Explicit control. Predictable speed. Minimal magic.\n\n");
+    printf("Usage: virex [OPTIONS] [COMMAND]\n\n");
+    printf("Commands:\n");
+    printf("  build <file>    Compile a Virex source file\n\n");
+    printf("Options:\n");
+    printf("  --version       Print version information\n");
+    printf("  --help          Print this help message\n");
+    printf("  --lex <file>    Tokenize a file and print tokens\n");
+    printf("  --ast <file>    Parse a file and print AST\n");
+    printf("  --check <file>  Type check a file\n");
+    printf("  --emit-ir <file> Generate and print IR\n\n");
+    printf("Examples:\n");
+    printf("  virex build main.vx\n");
+}
+
+static char *read_file(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) return NULL;
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char *buffer = malloc(size + 1);
+    size_t read = fread(buffer, 1, size, file);
+    buffer[read] = '\0';
+    fclose(file);
+    return buffer;
+}
+
+static void lex_file(const char *filename) {
+    char *source = read_file(filename);
+    if (!source) exit(1);
+    Lexer *lexer = lexer_init(source, filename);
+    Token *token;
+    do {
+        token = lexer_next_token(lexer);
+        token_print(token);
+        if (token->type == TOKEN_EOF || token->type == TOKEN_ERROR) {
+            token_free(token);
+            break;
+        }
+        token_free(token);
+    } while (true);
+    lexer_free(lexer);
+    free(source);
+}
+
+static int compile_file(const char *filename) {
+    Project *project = project_create();
+    if (!project_load_module(project, filename, ".")) {
+        project_free(project);
+        return 1;
+    }
+    if (!project_analyze(project)) {
+        project_free(project);
+        return 1;
+    }
+    
+    char output_filename[256];
+    snprintf(output_filename, sizeof(output_filename), "virex_out.c");
+    FILE *output = fopen(output_filename, "w");
+    CodeGenerator *codegen = codegen_create();
+    codegen_generate_c(codegen, project, output);
+    fclose(output);
+    
+    char exe_name[256];
+    strncpy(exe_name, basename(project->main_module->path), 255);
+    char *dot = strrchr(exe_name, '.');
+    if (dot) *dot = '\0';
+    
+    char compile_cmd[1024];
+    snprintf(compile_cmd, sizeof(compile_cmd), "gcc -O2 %s runtime/virex_runtime.o -o %s 2>&1", output_filename, exe_name);
+    printf("✓ Generated C code: %s\n", output_filename);
+    printf("✓ Compiling with gcc...\n");
+    if (system(compile_cmd) == 0) {
+        printf("✓ Build successful: %s\n", exe_name);
+    } else {
+        fprintf(stderr, "✗ Compilation failed\n");
+    }
+    codegen_free(codegen);
+    project_free(project);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    fprintf(stderr, "DEBUG: Starting compiler\n");
+    setbuf(stdout, NULL);
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <command> <file>\n", argv[0]);
+        fprintf(stderr, "Commands:\n");
+        fprintf(stderr, "  build <file>  - Compile and build executable\n");
+        return 1;
+    }
+    
+    fprintf(stderr, "DEBUG: Parsing arguments\n");
+    const char *command = argv[1];
+    const char *filename = argv[2];
+    
+    fprintf(stderr, "DEBUG: Command=%s, File=%s\n", command, filename);
+    
+    if (strcmp(command, "build") == 0) {
+        fprintf(stderr, "DEBUG: Calling compile_file\n");
+        return compile_file(filename);
+    } else if (strcmp(command, "--lex") == 0) { // This part is from the original code, adapted to the new argument structure
+        lex_file(filename);
+        return 0;
+    } else if (strcmp(command, "--ast") == 0 || strcmp(command, "--check") == 0 || strcmp(command, "--emit-ir") == 0) {
+        Project *project = project_create();
+        if (!project_load_module(project, filename, ".")) {
+            project_free(project);
+            return 1;
+        }
+        if (!project_analyze(project)) {
+            project_free(project);
+            return 1;
+        }
+        
+        if (strcmp(command, "--ast") == 0) {
+            for (size_t m = 0; m < project->module_count; m++) {
+                printf("AST for module %s:\n", project->modules[m]->name);
+                ast_print_program(project->modules[m]->ast);
+            }
+        } else if (strcmp(command, "--emit-ir") == 0) {
+            IRGenerator *gen = irgen_create();
+            for (size_t m = 0; m < project->module_count; m++) {
+                printf("IR for module %s:\n", project->modules[m]->name);
+                IRModule *ir = irgen_generate(gen, project->modules[m]->ast, project->modules[m]->name, project->modules[m]->symtable);
+                iropt_optimize(ir);
+                ir_module_print(ir);
+                ir_module_free(ir);
+            }
+            irgen_free(gen);
+        }
+        project_free(project);
+        return 0;
+    } else if (strcmp(command, "--version") == 0) {
+        print_version();
+        return 0;
+    } else if (strcmp(command, "--help") == 0) {
+        print_help();
+        return 0;
+    } else {
+        fprintf(stderr, "Unknown command: %s\n", command);
+        return 1;
+    }
+}
+        return 0;
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: 'build' command requires a filename\n");
+                return 1;
+            }
+            char *filename = argv[++i];
+            Project *project = project_create();
+            if (!project_load_module(project, filename, ".")) {
+                project_free(project);
+                return 1;
+            }
+            if (!project_analyze(project)) {
+                project_free(project);
+                return 1;
+            }
+            
+            char output_filename[256];
+            snprintf(output_filename, sizeof(output_filename), "virex_out.c");
+            FILE *output = fopen(output_filename, "w");
+            CodeGenerator *codegen = codegen_create();
+            codegen_generate_c(codegen, project, output);
+            fclose(output);
+            
+            char exe_name[256];
+            strncpy(exe_name, basename(project->main_module->path), 255);
+            char *dot = strrchr(exe_name, '.');
+            if (dot) *dot = '\0';
+            
+            char compile_cmd[1024];
+            snprintf(compile_cmd, sizeof(compile_cmd), "gcc -O2 %s runtime/virex_runtime.o -o %s 2>&1", output_filename, exe_name);
+            printf("✓ Generated C code: %s\n", output_filename);
+            printf("✓ Compiling with gcc...\n");
+            if (system(compile_cmd) == 0) {
+                printf("✓ Build successful: %s\n", exe_name);
+            } else {
+                fprintf(stderr, "✗ Compilation failed\n");
+            }
+            codegen_free(codegen);
+            project_free(project);
+            return 0;
+        } else if (strcmp(arg, "--ast") == 0 || strcmp(arg, "--check") == 0 || strcmp(arg, "--emit-ir") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: %s requires a filename\n", arg);
+                return 1;
+            }
+            char *filename = argv[++i];
+            Project *project = project_create();
+            if (!project_load_module(project, filename, ".")) {
+                project_free(project);
+                return 1;
+            }
+            if (!project_analyze(project)) {
+                project_free(project);
+                return 1;
+            }
+            
+            if (strcmp(arg, "--ast") == 0) {
+                for (size_t m = 0; m < project->module_count; m++) {
+                    printf("AST for module %s:\n", project->modules[m]->name);
+                    ast_print_program(project->modules[m]->ast);
+                }
+            } else if (strcmp(arg, "--emit-ir") == 0) {
+                IRGenerator *gen = irgen_create();
+                for (size_t m = 0; m < project->module_count; m++) {
+                    printf("IR for module %s:\n", project->modules[m]->name);
+                    IRModule *ir = irgen_generate(gen, project->modules[m]->ast, project->modules[m]->name, project->modules[m]->symtable);
+                    iropt_optimize(ir);
+                    ir_module_print(ir);
+                    ir_module_free(ir);
+                }
+                irgen_free(gen);
+            }
+            project_free(project);
+            return 0;
+        }
+    }
+
+    fprintf(stderr, "Error: Unknown command or option '%s'\n", argv[1]);
+    return 1;
+}

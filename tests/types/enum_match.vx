@@ -1,0 +1,48 @@
+
+module "enum_match";
+
+import "io.vx" as io;
+
+enum Color {
+    Red,
+    Green,
+    Blue
+};
+
+func main() -> i32 {
+    io.println("Testing enum matching...");
+
+    var Color c = Red;
+    var i32 val = 0;
+
+    match c {
+        Red => {
+            val = 1;
+        }
+        Green => {
+            val = 2;
+        }
+        Blue => {
+            val = 3;
+        }
+    }
+
+    if (val != 1) {
+        io.println("FAIL: Red should match val=1");
+        return 1;
+    }
+
+    c = Green;
+    match c {
+        Red => { val = 10; }
+        _   => { val = 20; }
+    }
+    
+    if (val != 20) {
+        io.println("FAIL: Wildcard should match Green");
+        return 1;
+    }
+
+    io.println("PASS: Enum match works");
+    return 0;
+}
