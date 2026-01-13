@@ -395,11 +395,17 @@ static void gen_function(CodeGenerator *gen, IRFunction *func) {
     const char *ret_type = (func->return_type && func->return_type[0]) ? func->return_type : "long";
     fprintf(gen->output, "%s %s(", ret_type, func->name);
     
-    // Parameters
+    // Parameters (add restrict for pointer types to enable better optimization)
     for (size_t i = 0; i < func->param_count; i++) {
         if (i > 0) fprintf(gen->output, ", ");
         if (func->param_types && func->param_types[i]) {
-            fprintf(gen->output, "%s %s", func->param_types[i], func->params[i]);
+            const char *type = func->param_types[i];
+            // Add restrict keyword for pointer types
+            if (strstr(type, "*") != NULL) {
+                fprintf(gen->output, "%s restrict %s", type, func->params[i]);
+            } else {
+                fprintf(gen->output, "%s %s", type, func->params[i]);
+            }
         } else {
             fprintf(gen->output, "long %s", func->params[i]);
         }

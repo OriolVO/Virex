@@ -1,0 +1,117 @@
+// ArrayList Example - A simple array-based list implementation
+// Demonstrates: structs, arrays, functions, loops, and control flow
+
+import "io.vx" as io;
+
+// ArrayList structure with fixed capacity
+struct ArrayList {
+    i32[20] data;   // Fixed-size array
+    i32 size;       // Current number of elements
+};
+
+// Create a new empty list
+func create_list() -> ArrayList {
+    var ArrayList list;
+    list.size = 0;
+    return list;
+}
+
+// Add an element to the end of the list (returns new list)
+func push(ArrayList list, i32 value) -> ArrayList {
+    if (list.size >= 20) {
+        return list;  // List is full
+    }
+    
+    list.data[list.size] = value;
+    list.size = list.size + 1;
+    return list;
+}
+
+// Get the value at a specific index
+func get_at(ArrayList list, i32 index) -> i32 {
+    if (index < 0) {
+        return 0;
+    }
+    if (index >= list.size) {
+        return 0;
+    }
+    return list.data[index];
+}
+
+// Print all elements in the list
+func print_list(ArrayList list) {
+    io.print("ArrayList [");
+    io.print(list.size);
+    io.print(" elements]: [");
+    
+    var i32 i = 0;
+    while (i < list.size) {
+        if (i > 0) {
+            io.print(", ");
+        }
+        io.print(list.data[i]);
+        i = i + 1;
+    }
+    
+    io.println("]");
+}
+
+// Check if the list is empty
+func is_empty(ArrayList list) -> bool {
+    return list.size == 0;
+}
+
+func main() -> i32 {
+    io.println("=== ArrayList Example ===");
+    io.println("");
+    
+    // Create a new list
+    var ArrayList my_list = create_list();
+    io.println("Created empty list");
+    print_list(my_list);
+    
+    // Add elements
+    io.println("");
+    io.println("Adding elements: 10, 20, 30, 40, 50");
+    my_list = push(my_list, 10);
+    my_list = push(my_list, 20);
+    my_list = push(my_list, 30);
+    my_list = push(my_list, 40);
+    my_list = push(my_list, 50);
+    print_list(my_list);
+    
+    // Get size
+    io.println("");
+    io.print("List size: ");
+    io.println(my_list.size);
+    
+    // Access elements by index
+    io.println("");
+    io.println("Accessing elements by index:");
+    var i32 i = 0;
+    while (i < my_list.size) {
+        io.print("  Index ");
+        io.print(i);
+        io.print(": ");
+        io.println(get_at(my_list, i));
+        i = i + 1;
+    }
+    
+    // Modify an element directly
+    io.println("");
+    io.println("Setting index 2 to 99");
+    my_list.data[2] = 99;
+    print_list(my_list);
+    
+    // Check if empty
+    io.println("");
+    if (is_empty(my_list)) {
+        io.println("List is empty");
+    } else {
+        io.println("List is not empty");
+    }
+    
+    io.println("");
+    io.println("=== Example Complete ===");
+    return 0;
+}

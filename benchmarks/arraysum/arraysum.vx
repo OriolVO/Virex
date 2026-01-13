@@ -1,0 +1,26 @@
+// Array Sum benchmark for Virex
+// Tests sequential memory access and simple arithmetic
+
+func sum_array() -> i32 {
+    var i32[10000] arr;
+    
+    // Initialize array
+    for (var i32 i = 0; i < 10000; i = i + 1) {
+        arr[i] = i;
+    }
+    
+    // Sum array multiple times
+    var i32 total = 0;
+    for (var i32 iter = 0; iter < 1000; iter = iter + 1) {
+        for (var i32 j = 0; j < 10000; j = j + 1) {
+            total = total + arr[j];
+        }
+    }
+    
+    return total;
+}
+
+func main() -> i32 {
+    sum_array();
+    return 0;
+}

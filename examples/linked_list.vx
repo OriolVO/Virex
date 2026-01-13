@@ -1,0 +1,76 @@
+// LinkedList Example - Dynamic memory allocation demo using malloc/free via FFI
+// Demonstrates: FFI declarations, dynamic memory allocation
+
+import "io.vx" as io;
+
+// FFI declarations for memory allocation
+extern func malloc(i64 size) -> i64;
+extern func free(i64 ptr);
+
+// LinkedList structure (simplified for demo)
+struct LinkedList {
+    i64 head;  // Pointer to first node
+    i32 size;
+};
+
+// Create a new empty linked list
+func create_list() -> LinkedList {
+    var LinkedList list;
+    list.head = 0;  // NULL
+    list.size = 0;
+    return list;
+}
+
+func is_empty(LinkedList list) -> bool {
+    return list.head == 0;
+}
+
+func main() -> i32 {
+    io.println("=== LinkedList with malloc/free (Concept Demo) ===");
+    io.println("");
+    
+    io.println("This example demonstrates:");
+    io.println("  - FFI declarations (extern func malloc/free)");
+    io.println("  - Dynamic memory allocation from libc");
+    io.println("  - Pointer-based data structures (concept)");
+    io.println("");
+    
+    // Demonstrate malloc/free work
+    io.println("Allocating 16 bytes with malloc...");
+    var i64 ptr = malloc(16);
+    io.print("Allocated memory at address: 0x");
+    io.println(ptr);
+    
+    io.println("Freeing memory...");
+    free(ptr);
+    io.println("Memory freed successfully!");
+    
+    io.println("");
+    io.println("Allocating multiple blocks...");
+    var i64 ptr1 = malloc(32);
+    var i64 ptr2 = malloc(64);
+    var i64 ptr3 = malloc(128);
+    io.println("Allocated 3 blocks (32, 64, 128 bytes)");
+    
+    free(ptr1);
+    free(ptr2);
+    free(ptr3);
+    io.println("All blocks freed successfully!");
+    
+    io.println("");
+    io.println("Note: Full LinkedList implementation requires:");
+    io.println("  - Pointer casting (i64 -> struct*)");
+    io.println("  - Struct member access via raw pointers");
+    io.println("  - Or additional FFI helpers for memory operations");
+    io.println("");
+    io.println("Current limitation: Cannot cast i64 to typed pointers");
+    io.println("and dereference them to access struct members.");
+    
+    io.println("");
+    io.println("See array_list.vx for a complete working list");
+    io.println("implementation using stack-allocated arrays.");
+    
+    io.println("");
+    io.println("=== Demo Complete ===");
+    return 0;
+}

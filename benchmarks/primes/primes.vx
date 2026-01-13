@@ -1,0 +1,42 @@
+// Prime Sieve benchmark for Virex
+// Sieve of Eratosthenes - tests loops and array operations
+
+func sieve_primes(i32 limit) -> i32 {
+    var bool[10000] is_prime;
+    
+    // Initialize all as prime
+    for (var i32 idx = 0; idx < limit; idx = idx + 1) {
+        is_prime[idx] = true;
+    }
+    
+    is_prime[0] = false;
+    is_prime[1] = false;
+    
+    // Sieve
+    for (var i32 i = 2; i * i < limit; i = i + 1) {
+        if (is_prime[i]) {
+            for (var i32 j = i * i; j < limit; j = j + i) {
+                is_prime[j] = false;
+            }
+        }
+    }
+    
+    // Count primes
+    var i32 count = 0;
+    for (var i32 k = 0; k < limit; k = k + 1) {
+        if (is_prime[k]) {
+            count = count + 1;
+        }
+    }
+    
+    return count;
+}
+
+func main() -> i32 {
+    // Run multiple iterations to make it measurable
+    var i32 total = 0;
+    for (var i32 iter = 0; iter < 1000; iter = iter + 1) {
+        total = total + sieve_primes(10000);
+    }
+    return 0;
+}

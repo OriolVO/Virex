@@ -1,625 +1,418 @@
-# Virex v0.1 Development Roadmap
+# Virex v0.2 Development Roadmap
 
-> **Goal:** Build a minimal but fully functional Virex compiler that demonstrates core language features and produces working executables.
+> **Goal:** Transform Virex from a functional prototype into a production-ready systems language with competitive performance and robust safety guarantees.
 
----
-
-## Phase 1: Foundation & Tooling Setup
-
-**Goal:** Establish the development environment and basic project structure.
-
-### 1.1 Project Infrastructure
-- [x] Set up C-based compiler project structure
-- [x] Configure build system (Makefile or CMake)
-- [x] Create basic CLI interface (`virex build`, `virex --version`)
-- [x] Set up testing framework for compiler tests (check, cmocka, or custom)
-- [x] Create example programs directory (`examples/`)
-- [x] Set up memory leak detection (Valgrind integration)
-
-### 1.2 Documentation & Planning
-- [x] Complete CORE.md specification
-- [x] Create architecture documentation (compiler stages overview)
-- [x] Set up contribution guidelines
-- [x] Create test case template
-
-**Deliverable:** Working project skeleton with CLI that prints help messages. ✅ **COMPLETE**
+**Status:** v0.1 COMPLETE ✅ (All 15 phases finished, 35/35 tests passing)
 
 ---
 
-## C-Specific Tooling & Recommendations
+## v0.1 Achievements 🎉
 
-**Goal:** Set up a productive C development environment for compiler development.
+- ✅ **Complete compiler pipeline:** Lexer → Parser → Semantic → IR → Optimizer → C Codegen
+- ✅ **Full language features:** Generics, modules, FFI, pattern matching, result types
+- ✅ **Native performance:** Virex ≈ C for function-heavy workloads
+- ✅ **Comprehensive testing:** 39 test files, 100% pass rate
+- ✅ **Working examples:** Fibonacci, ArrayList, LinkedList
+- ✅ **Benchmark suite:** 4 benchmarks comparing against C, Rust, Lua
 
-### Build System Options
+**Lines of Code:** ~6,857 (compiler) + ~500 (runtime) + ~200 (stdlib)
 
-**Option A: Makefile (Recommended for simplicity)**
-- Simple, universal, no dependencies
-- Good for learning and small projects
-- Example structure:
-  ```makefile
-  CC = gcc
-  CFLAGS = -std=c11 -Wall -Wextra -O2
-  LDFLAGS = 
-  
-  virex: main.o lexer.o parser.o ...
-      $(CC) -o $@ $^ $(LDFLAGS)
-  ```
+---
 
-**Option B: CMake (Recommended for larger projects)**
-- Cross-platform, modern
-- Better dependency management
-- Easier to integrate with IDEs
+## Type System Philosophy
 
-### Recommended Helper Libraries
+### C Types vs Virex Types
 
-| Library | Purpose | Why Use It |
-|---------|---------|------------|
-| [uthash](https://troydhanson.github.io/uthash/) | Hash tables | Symbol tables, type lookups |
-| [stb_ds.h](https://github.com/nothings/stb/blob/master/stb_ds.h) | Dynamic arrays, hash maps | AST nodes, token lists |
-| [LLVM C API](https://llvm.org/doxygen/group__LLVMC.html) | Code generation | Production-quality backend (optional) |
-| [check](https://libcheck.github.io/check/) or [cmocka](https://cmocka.org/) | Unit testing | Test framework |
+Virex maintains a **strict separation** between C interop types and native types:
 
-### Memory Management Tools
+**C Types (FFI Only):**
+- `cstring` - Null-terminated C string (**use only for C FFI**)
+- `c_int`, `c_long`, `c_char`, etc. - Platform-specific C types
+- **Use only in:** `extern` function signatures, C struct definitions
+- **Never use in:** Pure Virex code, stdlib implementations
 
-- **Valgrind** - Memory leak detection
-  ```bash
-  valgrind --leak-check=full ./virex test.vx
-  ```
-- **AddressSanitizer** - Compile-time instrumentation
-  ```bash
-  gcc -fsanitize=address -g ...
-  ```
+**Virex Types (Native Code):**
+- **`[]u8`** - Native string representation (UTF-8 bytes, slice of bytes)
+- **`String`** - stdlib wrapper struct around `[]u8` (convenience layer)
+- `i32`, `i64`, `u8`, etc. - Fixed-size integers
+- `[]T` - Slices (safe views into arrays)
+- **Use for:** All Virex code, stdlib, application logic
 
-### Recommended Project Structure
+**Rationale:**
+1. **Safety:** Virex types have bounds checking and safety guarantees
+2. **Clarity:** Clear boundary between safe Virex code and unsafe FFI
+3. **Ergonomics:** Virex types are more convenient (no null-termination, length tracking)
+4. **Performance:** Virex types can be optimized without C compatibility constraints
+5. **Modularity:** String features in stdlib, not hardcoded in compiler (like C++)
 
-```
-virex/
-├── Makefile or CMakeLists.txt
-├── README.md
-├── CORE.md
-├── ROADMAP.md
-├── src/
-│   ├── main.c           # CLI entry point
-│   ├── lexer.c/h        # Tokenization
-│   ├── parser.c/h       # AST construction
-│   ├── ast.c/h          # AST node definitions
-│   ├── semantic.c/h     # Type checking
-│   ├── codegen.c/h      # Code generation
-│   ├── symtable.c/h     # Symbol table
-│   ├── types.c/h        # Type system
-│   ├── error.c/h        # Error reporting
-│   ├── util.c/h         # Utilities (string, memory)
-│   └── ir.c/h           # Intermediate representation
-├── include/
-│   └── virex.h          # Public API header
-├── lib/                 # Third-party libraries (uthash, stb, etc.)
-├── tests/
-│   ├── test_lexer.c
-│   ├── test_parser.c
-│   └── ...
-├── examples/
-│   ├── hello.vx
-│   ├── fibonacci.vx
-│   └── ...
-└── build/               # Build artifacts (gitignored)
+**Example:**
+```virex
+// ✅ GOOD: Clear separation
+var []u8 bytes = "Hello, Virex!";         // Native: slice of bytes
+var String msg = String.from_bytes(bytes); // Stdlib wrapper
+
+io.println(msg);                          // Virex function
+
+extern func printf(cstring fmt, ...) -> i32;  // C FFI
+printf(msg.to_cstring());                 // Explicit conversion
+
+// ❌ BAD: Mixing types (will generate warning in v0.2)
+var cstring mixed = "Don't do this";      // cstring should be FFI-only
 ```
 
-### Development Workflow
+---
 
-1. **Edit code** in `src/`
-2. **Build** with `make` or `cmake --build build/`
-3. **Test** with `make test` or `ctest`
-4. **Debug** with `gdb ./virex` or `lldb ./virex`
-5. **Check leaks** with `valgrind`
+## Critical Issues from v0.1
 
-### C11 Features to Use
+### 🔴 **P0: Performance Gap on Array Code**
+**Problem:** Prime Sieve benchmark shows Virex is **7x slower than C**, **28x slower than Rust**
+- Root cause: Generated C code lacks loop optimizations
+- Impact: Unacceptable for real-world array-heavy applications
+- **Must fix for v0.2**
 
-- `_Static_assert` for compile-time checks
-- `_Generic` for type-generic macros (optional)
-- `stdint.h` types (`int32_t`, `uint64_t`, etc.)
-- `stdbool.h` for `bool`, `true`, `false`
-- Designated initializers for structs
+### 🔴 **P0: Missing Safety Features**
+**Problem:** CORE.md promises lifetime analysis, but it's not implemented
+- Risk: Use-after-free bugs possible
+- Spec violation: Language promises not kept
+- **Must implement for v0.2**
 
-### Coding Standards
-
-- **C11 standard** (or C17)
-- **-Wall -Wextra -Wpedantic** compiler flags
-- **Consistent naming** (snake_case for functions/variables)
-- **Header guards** or `#pragma once`
-- **Documentation** with comments
+### 🟡 **P1: Developer Experience Issues**
+- No variable shadowing (forces awkward naming)
+- Output path `-o` doesn't handle directories
+- No incremental compilation (slow for large projects)
 
 ---
 
-## Phase 2: Lexer & Tokenization
+## v0.2 Development Phases
 
-**Goal:** Convert source code into a stream of tokens.
+### **Phase 1: Performance Optimization** (6-8 weeks)
 
-### 2.1 Core Token Types
-- [x] Implement keywords (`var`, `const`, `func`, `if`, `else`, `while`, `for`, `return`, `struct`, `enum`, `unsafe`, `public`, `module`, `import`, `extern`, `match`, `fail`)
-- [x] Implement primitive type tokens (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f64`, `bool`, `void`)
-- [x] Implement operators (`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`, `&`, `->`)
-- [x] Implement delimiters (`{`, `}`, `(`, `)`, `[`, `]`, `;`, `,`, `.`)
-- [x] Implement literals (integers, floats, strings, booleans)
-- [x] Implement identifiers and comments
+**Goal:** Close the 7x performance gap on array/loop code
 
-### 2.2 Lexer Features
-- [x] Line and column tracking for error reporting
-- [x] String escape sequences
-- [x] Multi-line comment support (`/* */`)
-- [x] Single-line comment support (`//`)
+#### 1.1 IR-Level Loop Optimizations
+- [ ] Loop invariant code motion (LICM)
+- [ ] Strength reduction (replace multiply with add in loops)
+- [ ] Loop unrolling (small fixed-count loops)
+- [ ] Dead store elimination in loops
 
-### 2.3 Testing
-- [ ] Unit tests for each token type
-- [x] Error handling for invalid characters
-- [x] Test files with various edge cases
+#### 1.2 Array Access Optimization
+- [ ] Bounds check elimination (when provably safe)
+- [ ] Array access pattern analysis
+- [ ] Consecutive access optimization
+- [ ] Stack allocation for small fixed arrays
 
-**Deliverable:** Lexer that can tokenize all basic Virex syntax. ✅ **COMPLETE**
+#### 1.3 C Code Generation Improvements
+- [ ] Emit `restrict` keyword for non-aliasing pointers
+- [ ] Add `__builtin_expect` for branch prediction hints
+- [ ] Use `const` for read-only data
+- [ ] Emit vectorization pragmas where applicable
 
----
+#### 1.4 Verification
+- [ ] Prime Sieve: Virex within 2x of C
+- [ ] Array Sum: Virex within 1.5x of C
+- [ ] Nested Loops: Virex within 1.5x of C
+- [ ] No performance regression on Fibonacci
 
-## Phase 3: Parser & AST Construction
-
-**Goal:** Build an Abstract Syntax Tree from tokens.
-
-### 3.1 Expression Parsing
-- [x] Literal expressions (numbers, booleans)
-- [x] Variable references
-- [x] Binary operations (arithmetic, comparison, logical)
-- [x] Unary operations (`-`, `!`, `&`, `*`)
-- [x] Function calls
-- [x] Array indexing
-- [x] Struct field access (`.` operator)
-- [x] Pointer dereference and address-of
-
-### 3.2 Statement Parsing
-- [x] Variable declarations (`var`, `const`)
-- [x] Assignment statements
-- [x] If/else statements
-- [x] While loops
-- [x] For loops
-- [x] Return statements
-- [x] Expression statements
-- [x] Block statements
-
-### 3.3 Declaration Parsing
-- [x] Function declarations
-- [x] Struct declarations
-- [x] Enum declarations (basic)
-- [x] Module declarations (placeholder)
-- [x] Import statements (placeholder)
-
-### 3.4 Type Parsing
-- [x] Primitive types
-- [x] Pointer types (`*T`, `*!T`)
-- [x] Array types (`T[N]`)
-- [x] Function types (for function pointers)
-- [x] Generic type parameters (`<T>`)
-
-### 3.5 Error Recovery
-- [x] Synchronization points for error recovery
-- [x] Helpful error messages with line/column info
-- [x] Multiple error reporting (don't stop at first error)
-
-**Deliverable:** Parser that produces a complete AST for valid Virex programs. ✅ **COMPLETE**
+**Deliverable:** Competitive performance on all benchmark categories
 
 ---
 
-## Phase 4: Semantic Analysis
+### **Phase 2: Safety & Correctness** (4-6 weeks)
 
-**Goal:** Validate the AST and prepare for code generation.
+**Goal:** Implement missing safety features from CORE.md
 
-### 4.1 Symbol Table & Scoping
-- [x] Build symbol table for variables, functions, types
-- [x] Implement scope management (nested scopes)
-- [x] Name resolution (local → module → std)
-- [x] Detect duplicate declarations
-- [x] Detect undefined references
+#### 2.1 Basic Lifetime Analysis
+- [ ] Track variable lifetimes in semantic analysis
+- [ ] Detect pointer-to-local escaping
+- [ ] Validate pointer usage doesn't outlive pointee
+- [ ] Error on use-after-free patterns
 
-### 4.2 Type Checking
-- [x] Type inference for literals
-- [x] Type checking for binary operations
-- [x] Type checking for function calls (argument types, return type)
-- [x] Type checking for assignments
-- [x] Struct field type validation (basic implementation)
-- [x] Array bounds checking (compile-time where possible)
-- [x] Pointer type compatibility
+#### 2.2 Enhanced Unsafe Validation
+- [ ] Strengthen nullable pointer dereference checks
+- [ ] Validate all unsafe operations are in `unsafe` blocks
+- [ ] Warn on unnecessary `unsafe` blocks
+- [ ] Add `--strict-unsafe` flag for extra checking
 
-### 4.3 Safety Analysis
-- [x] Detect nullable pointer dereferences outside `unsafe`
-- [x] Validate non-null pointer initialization
+#### 2.3 Control Flow Validation
+- [ ] Validate `break`/`continue` only in loops
+- [ ] Check all code paths return (for non-void functions)
+- [ ] Detect unreachable code after `return`/`fail`
+- [ ] Validate `match` exhaustiveness
 
-### 4.4 Control Flow Analysis
-- [x] Ensure all code paths return a value (for non-void functions)
-- [x] Detect unreachable code
+#### 2.4 Testing
+- [ ] Add 20+ negative test cases (should fail compilation)
+- [ ] Test lifetime violations
+- [ ] Test unsafe block requirements
+- [ ] Test control flow edge cases
 
-**Deliverable:** Semantic analyzer that catches type errors and safety violations. ✅ **COMPLETE**
-
----
-
-## Phase 5: Intermediate Representation (IR)
-
-**Goal:** Lower AST to a simpler, platform-agnostic IR.
-
-### 5.1 IR Design
-- [x] Define IR instruction set (load, store, add, sub, mul, div, call, ret, br, etc.)
-- [x] Design IR data structures (basic blocks, functions, modules)
-- [x] Implement SSA form (Static Single Assignment) or similar
-- [x] Handle control flow (jumps, branches, labels)
-
-### 5.2 AST → IR Lowering
-- [x] Lower expressions to IR instructions
-- [x] Lower statements to IR instructions
-- [x] Lower function declarations
-- [x] Lower struct types (memory layout)
-- [x] Handle pointer operations
-- [x] Handle array operations
-
-### 5.3 IR Validation
-- [x] Verify IR correctness (type consistency, valid jumps)
-- [x] IR pretty-printer for debugging (`--emit-ir` flag)
-
-**Deliverable:** Working IR generator with debug output capability. ✅ **COMPLETE**
+**Deliverable:** All CORE.md safety promises implemented and tested
 
 ---
 
-## Phase 6: Basic Optimizations
+### **Phase 3: Language Improvements** (3-4 weeks)
 
-**Goal:** Implement essential optimizations for reasonable performance.
+**Goal:** Fix developer experience pain points
 
-### 6.1 Local Optimizations
-- [x] Constant folding (evaluate constant expressions at compile time)
-- [x] Dead code elimination (remove unreachable code)
-- [x] Copy propagation
-- [x] Common subexpression elimination (basic)
+#### 3.1 Variable Shadowing Support
+- [ ] Allow variable redeclaration in nested scopes
+- [ ] Update symbol table to support scope stacking
+- [ ] Add tests for shadowing edge cases
+- [ ] Update documentation
 
-**Deliverable:** Optimized IR that produces faster executables. ✅ **COMPLETE**
+#### 3.2 Output Path Handling
+- [ ] Fix `-o` flag to handle directory paths correctly
+- [ ] Create output directories if they don't exist
+- [ ] Add tests for various path formats
+- [ ] Update CLI help text
 
----
+#### 3.3 Error Message Improvements
+- [ ] Add color to error messages (red for errors, yellow for warnings)
+- [ ] Show code snippets with error location
+- [ ] Suggest fixes for common mistakes
+- [ ] Add error codes (e.g., E001, E002)
 
-## Phase 7: Code Generation (C Backend)
+#### 3.4 Standard Library Expansion
+- [ ] Add `std::str` - String manipulation functions
+- [ ] Add `std::math` - Math functions (sqrt, pow, sin, cos)
+- [ ] Add `std::fmt` - Formatted printing (sprintf-like)
+- [ ] Document all stdlib functions
 
-**Goal:** Generate executable code via C transpilation (bootstrap-friendly approach).
-
-### 7.1 Backend Setup
-- [x] Choose backend approach: **C code generation** (Option C - best for bootstrapping)
-- [x] Set up C code generator infrastructure
-- [x] Implement IR → C translation
-
-### 7.2 Code Emission
-- [x] Generate C for arithmetic operations
-- [x] Generate C for memory operations (load/store)
-- [x] Generate C for function calls and returns
-- [x] Generate C for control flow (goto, labels)
-- [x] Handle temporary variables
-- [x] Handle function declarations
-
-### 7.3 Build Integration
-- [x] Integrate code generator into `build` command
-- [x] Generate `.c` files from `.vx` source
-- [x] Provide gcc compilation instructions
-
-**Deliverable:** Compiler that generates C code, compilable with gcc. ✅ **COMPLETE**
-
-**Bootstrap Path:** Virex → C → gcc → binary (later: Virex → Virex → binary)
+**Deliverable:** Improved developer experience and expanded stdlib
 
 ---
 
-## Phase 8: Linking & Executable Generation
+### **Phase 4: Tooling & Infrastructure** (3-4 weeks)
 
-**Goal:** Link object files and produce runnable executables.
+**Goal:** Build essential development tools
 
-### 8.1 Linker Integration
-- [x] Invoke system linker (gcc)
-- [x] Link against libc for basic functions
-- [x] Generate executable with correct permissions
-- [x] Automatic compilation after C generation
+#### 4.1 Incremental Compilation
+- [ ] Cache compiled modules (.vxc files)
+- [ ] Detect which modules changed
+- [ ] Only recompile changed modules + dependents
+- [ ] Add `--clean` flag to force full rebuild
 
-### 8.2 Testing
-- [x] Test simple programs (arithmetic)
-- [x] Test function calls
-- [x] Test control flow (if/else, loops)
+#### 4.2 Performance Regression Testing
+- [ ] Automated benchmark suite in CI
+- [ ] Track performance over time
+- [ ] Alert on >10% regression
+- [ ] Generate performance reports
 
-**Deliverable:** Working executables that run on x86_64 Linux. ✅ **COMPLETE**
+#### 4.3 Code Formatter
+- [ ] Implement `virex fmt` command
+- [ ] Consistent indentation (4 spaces)
+- [ ] Line length limit (100 chars)
+- [ ] Format on save integration
 
----
+#### 4.4 Build System Improvements
+- [ ] Support `virex.toml` project files
+- [ ] Multi-file project compilation
+- [ ] Dependency tracking
+- [ ] Parallel compilation
 
-## Phase 9: Core Standard Library
-
-**Goal:** Implement minimal standard library functions.
-
-### 9.1 `std::mem`
-- [x] `alloc(size, count) -> *u8` (wrapper around malloc)
-- [x] `free(*u8)` (wrapper around free)
-- [x] `copy(*u8 dst, *u8 src, count)` (memcpy wrapper)
-- [x] `set(*u8 dst, value, count)` (memset wrapper)
-
-### 9.2 `std::io`
-- [x] `print_i32(value)` (print integer)
-- [x] `println_i32(value)` (print integer with newline)
-- [x] `print_bool(value)` (print boolean)
-- [x] `println_bool(value)` (print boolean with newline)
-- [x] `print_str(str)` (print string)
-- [x] `println_str(str)` (print string with newline)
-
-### 9.3 `std::os`
-- [x] `exit(code)` (wrapper around exit syscall)
-- [x] `get_argc()` (get argument count)
-- [x] `get_argv(index)` (get argument value)
-
-### 9.4 Testing
-- [x] Runtime library compiled
-- [x] Linked with generated code
-- [x] Example programs created
-
-**Deliverable:** Working standard library with essential functions. ✅ **COMPLETE**
+**Deliverable:** Professional development tooling
 
 ---
 
-## Phase 10: Generics with Monomorphization
+### **Phase 5: Advanced Features** (4-6 weeks)
 
-**Goal:** Support generic functions with compile-time specialization.
+**Goal:** Implement high-value features from CORE.md
 
-### 10.1 Generic Infrastructure
-- [x] AST support for generic type parameters
-- [x] Type parameter storage in function declarations
-- [x] Parser compatibility with generic syntax
+#### 5.1 Generic Structs & Enums
+- [ ] Extend monomorphization to structs
+- [ ] Support `struct Vec<T> { ... }`
+- [ ] Support `enum Option<T> { Some(T), None }`
+- [ ] Add tests for generic data structures
 
-### 10.2 Monomorphization Engine
-- [x] Type parameter substitution
-- [x] Generic function instantiation
-- [x] Mangled name generation for instantiated functions
-- [x] Duplicate instantiation prevention
-- [x] Type substitution in parameters and return types
+#### 5.2 Method Syntax (Sugar)
+- [ ] Allow `obj.method(args)` as sugar for `method(obj, args)`
+- [ ] No actual OOP, just syntax sugar
+- [ ] Update parser and semantic analyzer
+- [ ] Add examples using method syntax
 
-### 10.3 Integration
-- [x] Monomorphization context management
-- [x] Program transformation with instantiated functions
-- [x] Pointer and array type substitution
+#### 5.3 Slice Types & Type System Separation
 
-**Deliverable:** Working generics with compile-time monomorphization. ✅ **COMPLETE**
+**Goal:** Establish clear boundary between C types (FFI) and Virex types (native)
 
-**Note:** Full AST body cloning deferred to future optimization. Current implementation instantiates function signatures correctly.
+**Philosophy:**
+- **C types** (`cstring`, `c_int`, etc.) → **FFI only**
+- **Virex native strings** → **`[]u8` slices** (UTF-8 bytes)
+- **`String` struct** → **stdlib wrapper** (convenience, like C++)
+- Minimal compiler magic, features in libraries
 
----
+**Design Rationale:**
+> Strings are just byte arrays. The compiler provides slices `[]T`, and stdlib provides a `String` wrapper struct. This follows the C++ model: compiler gives primitives, stdlib gives convenience. No hardcoded string support in the compiler.
 
-## Phase 11: Module System
+**Implementation:**
 
-**Goal:** Support multi-file projects with imports and exports.
+- [ ] **Add `[]T` slice type** (compiler primitive)
+  - Slice structure: pointer + length
+  - Syntax: `[]T` for slice of type T
+  - Array-to-slice coercion (`arr[start..end]`)
+  - Bounds-checked slice access
+  - Slice iteration in for loops
+  - C codegen: `struct { T* data; i64 len; }`
+  - **String literals:** `"hello"` → `[]u8` (NOT `cstring`!)
 
-### 11.1 Module Resolution
-- [x] Parse `module` declarations
-- [x] Parse `import` statements
-- [x] Implement file-based module lookup (local → std)
-- [x] Handle module aliasing (`import "x" as y`)
+- [ ] **Implement `String` wrapper in stdlib** (NO compiler changes)
+  - Create `stdlib/string.vx` module
+  - `String` is just: `struct String { []u8 bytes; }`
+  - Zero-cost wrapper around `[]u8`
+  - Functions:
+    - `String.from_bytes([]u8)` - Wrap a slice
+    - `String.len()` - Get length
+    - `String.slice(i64, i64)` - Substring
+    - `String.concat(String, String)` - Concatenation
+    - `String.equals(String, String)` - Comparison
+    - `String.to_cstring()` - Convert for C FFI (allocates)
+    - `String.from_cstring(cstring)` - Import from C
+  - All logic in stdlib, not compiler
+  - Users can create alternative string types
 
-### 11.2 Visibility
-- [x] Implement `public` keyword
-- [x] Enforce visibility rules (private by default)
-- [x] Export public symbols
+- [ ] **Restrict `cstring` to FFI only**
+  - Add compiler warning for `cstring` in non-FFI context
+  - Update stdlib to use `String`/`[]u8` instead of `cstring`
+  - Keep `cstring` only in:
+    - `extern` function signatures
+    - C struct definitions
+    - Explicit FFI boundary crossings
+  - Migration guide for existing code
 
-### 11.3 Compilation Units
-- [x] Compile multiple files
-- [x] Link compiled modules together
-- [x] Handle circular dependencies (detect and error)
+- [ ] **Update type system**
+  - String literals default to `[]u8` (native)
+  - Require explicit `cstring` cast for FFI
+  - Example:
+    ```virex
+    var []u8 bytes = "Hello";           // Native: slice of bytes
+    var String msg = String.from_bytes("Hello");  // Stdlib wrapper
+    
+    extern func printf(cstring fmt, ...) -> i32;
+    printf(msg.to_cstring());           // Explicit conversion for FFI
+    ```
 
-### 11.4 Testing
-- [x] Test multi-file projects
-- [x] Test import resolution
-- [x] Test visibility enforcement
+- [ ] **Update CORE.md specification**
+  - Document `[]u8` as native string representation
+  - Add slice type documentation
+  - Clarify String as stdlib wrapper
+  - Update all examples
 
-**Deliverable:** Working module system for multi-file projects. ✅ **COMPLETE**
+**Testing:**
+- [ ] Slice type tests (`tests/types/slices.vx`)
+- [ ] String wrapper tests (`tests/stdlib/string.vx`)
+- [ ] FFI separation tests (warnings for cstring misuse)
+- [ ] String performance benchmarks
+- [ ] Verify all existing tests still pass
 
----
+**Deliverable:** Clean type system with `[]u8` native strings and stdlib `String` wrapper
 
-## Phase 12: Error Handling (Result Types)
-
-**Goal:** Implement `result<T, E>` type and pattern matching.
-
-### 12.1 Result Type
-- [x] Define `result<T, E>` as a built-in generic enum
-- [x] Implement `result::ok(T)` and `result::err(E)` constructors
-- [x] Type checking for result types
-
-### 12.2 Pattern Matching
-- [x] Parse `match` expressions
-- [x] Implement pattern matching for enums
-- [x] Exhaustiveness checking (ensure all cases covered)
-- [x] Extract values from patterns
-
-### 12.3 Fail Keyword
-- [x] Implement `fail` keyword (terminates program)
-- [x] Generate appropriate error messages
-
-### 12.4 Standard Library Support
-- [x] Implement `std::result::unwrap<T, E>(result<T, E>)`
-- [x] Implement `std::result::expect<T, E>(result<T, E>, cstring)`
-
-### 12.5 Testing
-- [x] Test result type creation and matching
-- [x] Test `unwrap` and `expect`
-- [x] Test error propagation patterns
-
-**Deliverable:** Robust error handling mechanism. ✅ **COMPLETE**
-
-
-
----
-
-## Phase 13: C Interop (FFI)
-
-**Goal:** Enable calling C functions and linking C libraries.
-
-### 13.1 Extern Declarations
-- [x] Parse `extern` function declarations
-- [x] Support C ABI types (`c_int`, `c_char`, etc.)
-- [x] Handle variadic functions (`...`)
-
-### 13.2 ABI Compatibility
-- [x] Ensure struct layout matches C (padding, alignment)
-- [x] Implement `packed` attribute for structs
-  - [x] Add parser support for `packed struct`
-  - [x] Update codegen to emit `__attribute__((packed))`
-  - [x] Verify layout with C tests
-- [x] Handle calling convention (cdecl)
-
-### 13.3 Linking
-- [x] Link against C libraries (`-l` flag)
-- [x] Resolve external symbols
-
-### 13.4 Testing
-- [x] Test calling `printf` from C
-- [x] Test calling other libc functions (`strlen`, `strcmp`)
-- [x] Test struct interop with C
-
-**Deliverable:** Working C interop for calling external libraries. ✅ **COMPLETE**
+**Deliverable:** Modern language features for ergonomic code
 
 ---
 
-## Phase 14: Testing & Examples
+### **Phase 6: Documentation & Polish** (2-3 weeks)
 
-**Goal:** Comprehensive testing and example programs.
+**Goal:** Prepare for v0.2 release
 
-### 14.1 Compiler Edge Case Tests
-- [x] Complex expression precedence and nesting
-- [x] Deeply nested control flow (if/else, while, for)
-- [x] Nested structs and self-referential pointer fields
-- [x] Large enums and enums in complex data structures
-- [x] Shadowing and deep module import hierarchies
-- [x] Exhaustive pattern matching for complex enums
+#### 6.1 Documentation
+- [ ] Complete language guide (tutorial)
+- [ ] API reference for stdlib
+- [ ] Migration guide from v0.1
+- [ ] Architecture documentation
 
-### 14.2 Feature Integration Tests
-- [x] Generics in multi-file projects
-- [x] FFI with custom struct types and pointers
-- [x] Result type propagation across multiple function calls
-- [x] Pointer safety across different scopes
+#### 6.2 Examples
+- [ ] HTTP server example (using C FFI)
+- [ ] JSON parser example
+- [ ] Command-line tool example
+- [ ] Game of Life example
 
-### 14.3 Comprehensive Examples
-- [x] Fibonacci (recursive)
-- [ ] LinkedList implementation (pointers + structs)
-- [ ] Vector3 math library (structs + methods-like functions)
-- [ ] Minimal "JSON" parser style string processing
+#### 6.3 Testing & Quality
+- [ ] Reach 100+ test files
+- [ ] Add fuzzing tests
+- [ ] Memory leak testing (Valgrind)
+- [ ] Static analysis (cppcheck, clang-tidy)
 
-**Deliverable:** Comprehensive test suite and robust example library.
+#### 6.4 Release Preparation
+- [ ] Version bump to v0.2.0
+- [ ] Changelog generation
+- [ ] Binary releases (Linux x64)
+- [ ] Announcement blog post
 
----
-
-## Phase 15: Documentation & Polish
-
-**Goal:** Finalize v0.1 release with documentation.
-
-### 15.1 Documentation
-- [ ] Write getting started guide
-- [ ] Document compiler flags and options
-- [ ] Create language tutorial
-- [ ] Document standard library functions
-- [ ] Write troubleshooting guide
-
-### 15.2 Error Messages
-- [ ] Improve error message clarity
-- [ ] Add suggestions for common mistakes
-- [ ] Implement error codes
-
-### 15.3 Performance
-- [ ] Benchmark compiler speed
-- [ ] Benchmark generated code performance
-- [ ] Optimize slow compilation paths
-
-### 15.4 Release Preparation
-- [ ] Version tagging (v0.1.0)
-- [ ] Create release notes
-- [ ] Package binaries for distribution
-- [ ] Set up CI/CD pipeline
-
-**Deliverable:** Virex v0.1 release ready for public use.
+**Deliverable:** Virex v0.2 release ready for public use
 
 ---
 
-## Out of Scope for v0.1
+## Success Criteria for v0.2
 
-The following features are defined in CORE.md but deferred to future versions:
+A successful v0.2 release must:
 
-### Deferred to v0.2+
-
-**Phase 4 Semantic Analysis:**
-- [ ] Basic lifetime analysis (prevent use-after-free)
-- [ ] Validate `unsafe` block requirements
-- [ ] Validate break/continue usage in loops
-
-**Phase 6 Optimizations:**
-- [ ] Inline small functions (simple heuristic)
-- [ ] Tail call optimization
-- [ ] Stack allocation for non-escaping heap objects (escape analysis)
-- [ ] Remove unused variables
-
-**Future Features:**
-- [ ] Generic struct and enum support (Phase 10 extended)
-- [ ] Advanced concurrency (`std::thread`, `std::sync`, `std::atomic`)
-- [ ] Advanced optimizations (loop unrolling, vectorization)
-- [ ] Multiple target platforms (Windows, macOS, ARM)
-- [ ] Package manager
-- [ ] Language server protocol (LSP) for IDE support
-- [ ] Debugger integration (DWARF debug info)
-- [ ] Incremental compilation
-- [ ] Compile-time function execution (comptime)
-- [ ] Advanced lifetime analysis
-- [ ] Borrow checker (if desired)
-- [ ] Native x86_64 backend (optional)
-- [ ] LLVM backend (optional)
-
-### Explicitly NOT in v0.1
-- Collections (Vec, Map, etc.) - external libraries
-- String types beyond `cstring` - external libraries
-- Filesystem abstraction - external libraries
-- Async runtime - external libraries
-- Reflection - not planned
-- Garbage collection - not planned
+1. **Performance:** Virex within 2x of C on all benchmarks
+2. **Safety:** All CORE.md safety features implemented
+3. **Usability:** Variable shadowing, better errors, incremental compilation
+4. **Reliability:** 100+ tests, no known critical bugs
+5. **Documentation:** Complete guide, API docs, examples
+6. **Tooling:** Formatter, project files, performance tracking
 
 ---
 
-## Success Criteria for v0.1
+## Out of Scope for v0.2
 
-A successful v0.1 release must:
+Deferred to v0.3 or later:
 
-1. ✅ Compile simple Virex programs to working x86_64 Linux executables
-2. ✅ Support all core syntax (variables, functions, structs, control flow)
-3. ✅ Implement basic type checking and safety analysis
-4. ✅ Support generics via monomorphization
-5. ✅ Provide a minimal but functional standard library
-6. ✅ Support multi-file projects with modules
-7. ✅ Enable C interop for calling external libraries
-8. ✅ Include comprehensive tests and examples
-9. ✅ Have clear documentation and error messages
-10. ✅ Demonstrate the core philosophy: "Explicit control. Predictable speed. Minimal magic."
+- **Concurrency primitives** (`std::thread`, `std::sync`) - Complex, needs design
+- **Package manager** - Requires ecosystem planning
+- **LSP support** - Needs stable language first
+- **Multiple platforms** (Windows, macOS, ARM) - Focus on Linux first
+- **LLVM backend** - C backend is sufficient for now
+- **Borrow checker** - Too complex, may not be needed
+- **Compile-time execution** - Advanced feature
+- **Reflection** - Not planned
 
 ---
 
 ## Timeline Estimate
 
-**Total estimated time:** 8-12 months (for a single developer working part-time)
+**Total time:** 22-31 weeks (~5-7 months for single developer)
 
-- Phase 1-2 (Foundation + Lexer): 3-4 weeks
-- Phase 3 (Parser): 4-5 weeks
-- Phase 4 (Semantic Analysis): 4-5 weeks
-- Phase 5 (IR): 3-4 weeks
-- Phase 6 (Optimizations): 3-4 weeks
-- Phase 7-8 (Code Generation + Linking): 8-10 weeks
-- Phase 9 (Standard Library): 2-3 weeks
-- Phase 10 (Generics): 4-5 weeks
-- Phase 11 (Modules): 3-4 weeks
-- Phase 12 (Result Types): 3-4 weeks
-- Phase 13 (C Interop): 1-2 weeks (easier in C!)
-- Phase 14 (Testing): 4-5 weeks
-- Phase 15 (Documentation): 2-3 weeks
+| Phase | Duration | Priority |
+|-------|----------|----------|
+| Phase 1: Performance | 6-8 weeks | P0 |
+| Phase 2: Safety | 4-6 weeks | P0 |
+| Phase 3: Language Improvements | 3-4 weeks | P1 |
+| Phase 4: Tooling | 3-4 weeks | P1 |
+| Phase 5: Advanced Features | 4-6 weeks | P2 |
+| Phase 6: Documentation | 2-3 weeks | P1 |
 
-**Note:** Timeline assumes familiarity with C and compiler development. C implementation requires more manual work (data structures, memory management) but has zero learning curve. Adjust based on team size and experience.
+**Recommended approach:** Focus on P0 items first (Phases 1-2), then P1 (Phases 3-4, 6), finally P2 (Phase 5).
+
+---
+
+## Risk Mitigation
+
+| Risk | Mitigation |
+|------|------------|
+| Performance optimization too complex | Start with simple passes, benchmark-driven development |
+| Lifetime analysis breaks existing code | Implement gradually with warnings first, then errors |
+| Scope creep | Strict prioritization, defer non-essential features |
+| Breaking changes | Maintain v0.1 compatibility where possible, clear migration guide |
 
 ---
 
 ## Next Steps
 
-1. Set up the Rust project structure
-2. Implement the lexer (Phase 2)
-3. Begin parser development (Phase 3)
-4. Iterate and test continuously
+1. **Review this roadmap** - Validate priorities and timeline
+2. **Set up performance tracking** - Baseline current benchmarks
+3. **Start Phase 1** - Begin with loop optimization passes
+4. **Create task.md** - Break down Phase 1 into actionable tasks
 
-**Let's build Virex! 🚀**
+---
+
+## Metrics to Track
+
+- **Performance:** Benchmark results vs C/Rust
+- **Code quality:** Test coverage, static analysis warnings
+- **Compiler size:** Lines of code (should stay manageable)
+- **Build time:** Time to compile Virex itself
+- **Memory usage:** Compiler memory consumption
+
+---
+
+**Let's make Virex production-ready! 🚀**

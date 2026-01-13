@@ -1,0 +1,19 @@
+// Nested Loops benchmark for Virex
+// Tests control flow and loop performance
+
+func nested_loops() -> i32 {
+    var i32 sum = 0;
+    
+    for (var i32 i = 0; i < 1000; i = i + 1) {
+        for (var i32 j = 0; j < 1000; j = j + 1) {
+            sum = sum + 1;
+        }
+    }
+    
+    return sum;
+}
+
+func main() -> i32 {
+    nested_loops();
+    return 0;
+}
