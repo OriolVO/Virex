@@ -1,0 +1,10 @@
+// tests/error/arg_count_mismatch.vx
+// Should fail: wrong number of arguments
+
+func add(i32 a, i32 b) -> i32 {
+    return a + b;
+}
+
+func main() -> i32 {
+    return add(1); // Error: expected 2 arguments, got 1
+}

@@ -1,0 +1,12 @@
+// tests/safety/escape_local.vx
+// Should fail semantic analysis
+
+func get_local_ptr() -> i32* {
+    var i32 x = 10;
+    return &x; // Error: cannot return pointer to local stack variable
+}
+
+func main() -> i32 {
+    var i32* ptr = get_local_ptr();
+    return 0;
+}

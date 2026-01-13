@@ -1,0 +1,11 @@
+// tests/control_flow/missing_return.vx
+// Should fail: non-void function must return
+
+func add(i32 a, i32 b) -> i32 {
+    var i32 c = a + b;
+    // Missing return c;
+}
+
+func main() -> i32 {
+    return add(1, 2);
+}

@@ -30,13 +30,23 @@ func main() -> i32 {
     d.c = 127;
     
     // Check struct size logic from C side
-    if (verify_struct_size(6) != 1) {
+    var i32 size_check = 0;
+    unsafe {
+        size_check = verify_struct_size(6);
+    }
+    
+    if (size_check != 1) {
         io.println("FAIL: Struct size is not 6 bytes (packed attribute failed)");
         exit(1);
     }
     
     // Check offsets and values from C side
-    if (verify_packed_struct(&d) != 1) {
+    var i32 val_check = 0;
+    unsafe {
+        val_check = verify_packed_struct(&d);
+    }
+    
+    if (val_check != 1) {
         io.println("FAIL: Packed struct verification failed in C");
         exit(1);
     }

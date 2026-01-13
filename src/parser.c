@@ -110,7 +110,7 @@ static void parser_error(Parser *p, const char *message) {
     p->panic_mode = true;
     p->had_error = true;
     
-    error_report(p->lexer->filename, p->current->line, p->current->column, message);
+    error_report_ex(LEVEL_ERROR, NULL, p->lexer->filename, p->current->line, p->current->column, message, NULL);
 }
 
 static void synchronize(Parser *p) {

@@ -109,7 +109,7 @@ static char *current_break_label(IRGenerator *gen) {
 // Forward declarations
 static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr);
 static void lower_stmt(IRGenerator *gen, ASTStmt *stmt);
-static void add_local_variable(IRGenerator *gen, const char *name, Type *type);
+static void add_local_variable(IRGenerator *gen, const char *name, Type *type, bool is_const);
 static void lower_function(IRGenerator *gen, ASTDecl *decl);
 static void lower_match_stmt(IRGenerator *gen, ASTStmt *stmt);
 static void lower_fail_stmt(IRGenerator *gen, ASTStmt *stmt);
@@ -593,7 +593,7 @@ static void lower_stmt(IRGenerator *gen, ASTStmt *stmt) {
             // Register unique name and type in local vars for stack allocation
              // Register local variable declaration for codegen (C backend)
              if (stmt->data.var_decl.name && stmt->data.var_decl.name[0] != '\0') {
-                 add_local_variable(gen, unique_name, stmt->data.var_decl.var_type);
+                 add_local_variable(gen, unique_name, stmt->data.var_decl.var_type, stmt->data.var_decl.is_const);
              }
 
             // Generate initialization if present
@@ -767,8 +767,7 @@ static void lower_stmt(IRGenerator *gen, ASTStmt *stmt) {
     }
 }
 
-// Helper to add local variable for C declaration
-static void add_local_variable(IRGenerator *gen, const char *name, Type *type) {
+static void add_local_variable(IRGenerator *gen, const char *name, Type *type, bool is_const) {
     if (!gen->current_function || !name) return;
     IRFunction *func = gen->current_function;
     
@@ -776,13 +775,30 @@ static void add_local_variable(IRGenerator *gen, const char *name, Type *type) {
     func->local_vars = realloc(func->local_vars, sizeof(char*) * (func->local_var_count + 1));
     func->local_var_types = realloc(func->local_var_types, sizeof(char*) * (func->local_var_count + 1));
     
-    func->local_vars[func->local_var_count] = strdup(name);
-    if (type) {
-        func->local_var_types[func->local_var_count] = type_to_c_string(type);
+    char *type_str = type ? type_to_c_string(type) : strdup("long");
+    
+    // Handle array stack allocation
+    if (type && type->kind == TYPE_ARRAY) {
+        char buf[256];
+        snprintf(buf, 256, "%s[%zu]", name, type->data.array.size);
+        func->local_vars[func->local_var_count] = strdup(buf);
+        
+        // Element type is base
+        free(type_str); // type_to_c_string returned pointer to array type string, we need element type
+        type_str = type_to_c_string(type->data.array.element);
     } else {
-        // Default to "long" if type is not provided, as per instruction's comment
-        func->local_var_types[func->local_var_count] = strdup("long"); // Assuming "long" is the default for Result data
+        func->local_vars[func->local_var_count] = strdup(name);
     }
+    
+    // Prepend const if needed (and not already there? type_to_c_string doesn't add const for vars, only for cstring primitive)
+    if (is_const && strncmp(type_str, "const ", 6) != 0) {
+        char *const_type = malloc(strlen(type_str) + 7);
+        sprintf(const_type, "const %s", type_str);
+        free(type_str);
+        type_str = const_type;
+    }
+    
+    func->local_var_types[func->local_var_count] = type_str;
     func->local_var_count++;
 }
 
@@ -936,7 +952,7 @@ static void lower_match_stmt(IRGenerator *gen, ASTStmt *stmt) {
             // I'll use "long" for now as 'data' union member is likely 'long ok_val'.
             // struct Result { long is_ok; union { long ok_val; long err_val; } data; };
             // So captures are longs.
-            add_local_variable(gen, unique_name, NULL); // NULL -> "long" special handling?
+            add_local_variable(gen, unique_name, NULL, false); // weak match capture, assumed mutable or default
             
             // Or creating a dummy type primitive long?
             // I'll modify add_local_variable to handle specialized or default "long".
@@ -968,7 +984,7 @@ static void lower_match_stmt(IRGenerator *gen, ASTStmt *stmt) {
             emit(gen, ir_instruction_create(IR_MOVE, ir_operand_temp(val_temp), ir_operand_var(data_access), NULL));
             
             char *unique_name = scope_define(gen, case_err->capture_name);
-            add_local_variable(gen, unique_name, NULL);
+            add_local_variable(gen, unique_name, NULL, false);
             emit(gen, ir_instruction_create(IR_MOVE, ir_operand_var(unique_name), ir_operand_temp(val_temp), NULL));
         }
         

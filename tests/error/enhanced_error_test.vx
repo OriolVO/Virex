@@ -1,0 +1,9 @@
+func test_errors() -> i32 {
+    var i32 x = "hello"; // E0001: Type mismatch
+    var i32 y = z + 1;   // E0002: Undefined variable 'z'
+    return 0;
+}
+
+func no_return() -> i32 {
+    var i32 x = 1;
+} // E0003: Missing return statement

@@ -21,6 +21,7 @@ typedef struct {
     Module **modules;
     size_t module_count;
     Module *main_module;
+    bool strict_unsafe_mode;
 } Project;
 
 Project *project_create(void);

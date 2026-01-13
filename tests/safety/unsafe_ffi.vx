@@ -1,0 +1,20 @@
+// tests/safety/unsafe_ffi.vx
+// Should fail semantic analysis if call checks work
+
+// Declare extern (FFI) function
+extern func puts(cstring s) -> i32;
+
+func safe_call() {
+    puts("Safe call?"); // Error: call to extern/variadic function requires unsafe block
+}
+
+func unsafe_call() {
+    unsafe {
+        puts("Unsafe call."); // OK
+    }
+}
+
+func main() -> i32 {
+    unsafe_call();
+    return 0;
+}

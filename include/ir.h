@@ -45,7 +45,8 @@ typedef enum {
     IR_MOVE,        // Move/copy value
     IR_NEG,         // Unary negation
     IR_ADDR,        // Address of (&)
-    IR_DEREF        // Dereference (*)
+    IR_DEREF,       // Dereference (*)
+    IR_NOP          // No Operation
 } IROpcode;
 
 // IR Operand types

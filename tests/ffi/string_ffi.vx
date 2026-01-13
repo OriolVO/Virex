@@ -12,15 +12,24 @@ func main() -> i32 {
 
     io.println("Testing string FFI (strlen/strcmp):");
 
-    var i32 len1 = strlen(s1);
+    var i32 len1 = 0;
+    unsafe {
+        len1 = strlen(s1);
+    }
     io.print("Length of 'hello': ");
     io.println(len1);
 
-    var i32 cmp1 = strcmp(s1, s2);
+    var i32 cmp1 = 0;
+    unsafe {
+        cmp1 = strcmp(s1, s2);
+    }
     io.print("strcmp('hello', 'world'): ");
     io.println(cmp1);
 
-    var i32 cmp2 = strcmp(s1, s3);
+    var i32 cmp2 = 0;
+    unsafe {
+        cmp2 = strcmp(s1, s3);
+    }
     io.print("strcmp('hello', 'hello'): ");
     io.println(cmp2);
 

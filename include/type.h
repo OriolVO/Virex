@@ -28,6 +28,7 @@ struct Type {
         struct {
             Type *base;
             bool non_null;  // true for *!T, false for *T
+            int scope_depth; // 0 = global, >0 = local stack depth
         } pointer;
         
         struct {

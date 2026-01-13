@@ -1,0 +1,9 @@
+// tests/error/type_mismatch.vx
+// Should fail: type mismatch in assignment
+
+func main() -> i32 {
+    var i32 x = 10;
+    var bool b = true;
+    x = b; // Error: cannot assign bool to i32
+    return 0;
+}

@@ -1,0 +1,13 @@
+// tests/control_flow/missing_return_if.vx
+// Should fail: if branch returns, but else implicit (or absent) does not
+
+func abs(i32 x) -> i32 {
+    if (x < 0) {
+        return -x;
+    }
+    // Error: no return if x >= 0
+}
+
+func main() -> i32 {
+    return abs(10);
+}

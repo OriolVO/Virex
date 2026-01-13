@@ -8,6 +8,7 @@
 // Forward declarations
 static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt);
 static Type *analyze_expr(SemanticAnalyzer *sa, ASTExpr *expr);
+static bool check_return_paths(ASTStmt *stmt);
 
 static void semantic_error(SemanticAnalyzer *sa, size_t line, size_t column, const char *message);
 static bool types_equal(Type *a, Type *b);
@@ -24,7 +25,11 @@ SemanticAnalyzer *semantic_create(void) {
     sa->current_function_return_type = NULL;
     sa->in_unsafe_block = false;
     sa->loop_depth = 0;
+    sa->scope_depth = 0;
     sa->had_error = false;
+    sa->strict_unsafe_mode = false;
+    sa->current_block_has_unsafe_op = false;
+    sa->current_filename = NULL;
     return sa;
 }
 
@@ -36,7 +41,12 @@ void semantic_free(SemanticAnalyzer *sa) {
 
 static void semantic_error(SemanticAnalyzer *sa, size_t line, size_t column, const char *message) {
     sa->had_error = true;
-    error_report("", line, column, message);
+    error_report_ex(LEVEL_ERROR, NULL, sa->current_filename ? sa->current_filename : "", line, column, message, NULL);
+}
+
+static void semantic_error_ex(SemanticAnalyzer *sa, const char *code, size_t line, size_t column, const char *message, const char *suggestion) {
+    sa->had_error = true;
+    error_report_ex(LEVEL_ERROR, code, sa->current_filename ? sa->current_filename : "", line, column, message, suggestion);
 }
 
 // Type comparison
@@ -154,7 +164,7 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             if (!symbol) {
                 char error_msg[256];
                 snprintf(error_msg, sizeof(error_msg), "undefined variable '%s'", expr->data.variable.name);
-                semantic_error(sa, expr->line, expr->column, error_msg);
+                semantic_error_ex(sa, "E0002", expr->line, expr->column, error_msg, "check for spelling mistakes or ensure the variable is declared in an accessible scope");
                 return NULL;
             }
             return symbol->type;
@@ -171,6 +181,41 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             // Arithmetic operators
             if (op == TOKEN_PLUS || op == TOKEN_MINUS || op == TOKEN_STAR || 
                 op == TOKEN_SLASH || op == TOKEN_PERCENT) {
+                
+                // Check for pointer arithmetic
+                bool is_ptr_arith = false;
+                Type *result_type = NULL;
+                
+                if (left_type->kind == TYPE_POINTER && is_integer_type(right_type)) {
+                    if (op == TOKEN_PLUS || op == TOKEN_MINUS) {
+                        is_ptr_arith = true;
+                        result_type = left_type;
+                    }
+                } else if (is_integer_type(left_type) && right_type->kind == TYPE_POINTER) {
+                    if (op == TOKEN_PLUS) {
+                        is_ptr_arith = true;
+                        result_type = right_type;
+                    }
+                } else if (left_type->kind == TYPE_POINTER && right_type->kind == TYPE_POINTER) {
+                     // Ptr - Ptr = Int
+                     if (op == TOKEN_MINUS) {
+                         if (!types_compatible(left_type, right_type)) {
+                             semantic_error(sa, expr->line, expr->column, "pointer subtraction requires compatible pointer types");
+                             return NULL;
+                         }
+                         is_ptr_arith = true;
+                         result_type = type_create_primitive(TOKEN_I64); // Result is size/offset (long)
+                     }
+                }
+                
+                if (is_ptr_arith) {
+                    if (!sa->in_unsafe_block) {
+                        semantic_error(sa, expr->line, expr->column, "pointer arithmetic requires unsafe block");
+                    }
+                    sa->current_block_has_unsafe_op = true;
+                    return result_type;
+                }
+
                 if (!is_numeric_type(left_type) || !is_numeric_type(right_type)) {
                     semantic_error(sa, expr->line, expr->column, "arithmetic operators require numeric operands");
                     return NULL;
@@ -213,9 +258,30 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             // Assignment
             if (op == TOKEN_EQ) {
                 if (!types_compatible(left_type, right_type)) {
-                    semantic_error(sa, expr->line, expr->column, "assignment type mismatch");
+                    semantic_error_ex(sa, "E0001", expr->line, expr->column, "assignment type mismatch", "ensure the value's type matches the variable's declared type");
                     return NULL;
                 }
+                
+                // Lifetime check: Preventing pointer escape
+                // If LHS is a variable, we can check its declared scope.
+                if (expr->data.binary.left->type == AST_VARIABLE_EXPR && 
+                    left_type->kind == TYPE_POINTER && 
+                    right_type->kind == TYPE_POINTER) {
+                        
+                    Symbol *sym = symtable_lookup(sa->symtable, expr->data.binary.left->data.variable.name);
+                    if (sym) {
+                        int lhs_depth = sym->scope_depth;
+                        int rhs_depth = right_type->data.pointer.scope_depth;
+                        
+                        // Rule: Cannot assign a pointer with deeper scope (shorter lifetime)
+                        // to a variable with shallower scope (longer lifetime).
+                        if (rhs_depth > lhs_depth) {
+                            semantic_error(sa, expr->line, expr->column, "cannot assign pointer to value with shorter lifetime");
+                            return NULL;
+                        }
+                    }
+                }
+                
                 return left_type;
             }
             
@@ -246,7 +312,20 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             
             if (op == TOKEN_AMP) {
                 // Address-of: returns non-null pointer
-                return type_create_pointer(operand_type, true);
+                Type *ptr_type = type_create_pointer(operand_type, true);
+                
+                // Tag with lifetime if it's a variable
+                if (expr->data.unary.operand->type == AST_VARIABLE_EXPR) {
+                    Symbol *sym = symtable_lookup(sa->symtable, expr->data.unary.operand->data.variable.name);
+                    if (sym) {
+                        ptr_type->data.pointer.scope_depth = sym->scope_depth;
+                    }
+                } else {
+                     // Temporary/Expression address has local lifetime of current scope
+                     ptr_type->data.pointer.scope_depth = sa->scope_depth;
+                }
+                
+                return ptr_type;
             }
             
             if (op == TOKEN_STAR) {
@@ -257,9 +336,12 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
                 }
                 
                 // Check nullable pointer safety
-                if (!operand_type->data.pointer.non_null && !sa->in_unsafe_block) {
-                    semantic_error(sa, expr->line, expr->column, "dereferencing nullable pointer requires unsafe block");
-                    return NULL;
+                if (!operand_type->data.pointer.non_null) {
+                    if (!sa->in_unsafe_block) {
+                        semantic_error(sa, expr->line, expr->column, "dereferencing nullable pointer requires unsafe block");
+                        return NULL;
+                    }
+                    sa->current_block_has_unsafe_op = true;
                 }
                 
                 return operand_type->data.pointer.base;
@@ -329,6 +411,28 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             if (func_symbol->kind != SYMBOL_FUNCTION) {
                 semantic_error(sa, expr->line, expr->column, "not a function");
                 return NULL;
+            }
+
+            // Check if unsafe block is required
+            if (func_symbol->is_extern || func_symbol->is_variadic) {
+                // Whitelist known safe standard library intrinsics
+                bool is_safe_intrinsic = false;
+                const char *name = func_symbol->name;
+                
+                // std::io::print/println (names might be namespaced or raw depending on import)
+                // Also check for 'exit', 'assert'
+                if (strcmp(name, "print") == 0 || strcmp(name, "println") == 0 ||
+                    strcmp(name, "exit") == 0 || strcmp(name, "assert") == 0 ||
+                    strstr(name, "print") != NULL || strstr(name, "println") != NULL) {
+                     is_safe_intrinsic = true;
+                }
+                
+                if (!is_safe_intrinsic) {
+                    if (!sa->in_unsafe_block) {
+                        semantic_error(sa, expr->line, expr->column, "call to extern/variadic function requires unsafe block");
+                    }
+                    sa->current_block_has_unsafe_op = true;
+                }
             }
             
             // Check argument count (allow extra args for variadic functions)
@@ -561,8 +665,8 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
             Symbol *existing = symtable_lookup_current(sa->symtable, stmt->data.var_decl.name);
             if (existing) {
                 char error_msg[256];
-                snprintf(error_msg, sizeof(error_msg), "duplicate declaration of '%s'", stmt->data.var_decl.name);
-                semantic_error(sa, stmt->line, stmt->column, error_msg);
+                snprintf(error_msg, sizeof(error_msg), "redefinition of '%s'", stmt->data.var_decl.name);
+                semantic_error_ex(sa, "E0006", stmt->line, stmt->column, error_msg, "variable names must be unique within the same scope; consider a different name");
                 return;
             }
             
@@ -572,7 +676,7 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
             if (stmt->data.var_decl.initializer) {
                 Type *init_type = analyze_expr(sa, stmt->data.var_decl.initializer);
                 if (init_type && !types_compatible(stmt->data.var_decl.var_type, init_type)) {
-                    semantic_error(sa, stmt->line, stmt->column, "initializer type mismatch");
+                    semantic_error_ex(sa, "E0001", stmt->data.var_decl.initializer->line, stmt->data.var_decl.initializer->column, "initializer type mismatch", "ensure the value's type matches the variable's declared type");
                 }
             }
             
@@ -581,6 +685,7 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
                                           stmt->data.var_decl.var_type, stmt->line, stmt->column);
             symbol->is_const = stmt->data.var_decl.is_const;
             symbol->is_initialized = stmt->data.var_decl.initializer != NULL;
+            symbol->scope_depth = sa->scope_depth;
             symtable_insert(sa->symtable, symbol);
             break;
         }
@@ -640,7 +745,14 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
                 } else if (!is_void && !return_type) {
                     semantic_error(sa, stmt->line, stmt->column, "non-void function must return a value");
                 } else if (!is_void && return_type && !types_compatible(sa->current_function_return_type, return_type)) {
-                    semantic_error(sa, stmt->line, stmt->column, "return type mismatch");
+                    semantic_error_ex(sa, "E0001", stmt->line, stmt->column, "return type mismatch", "ensure the returned value matches the function's return type");
+                }
+                
+                // Escape analysis: Check if returning pointer to local
+                if (return_type && return_type->kind == TYPE_POINTER) {
+                    if (return_type->data.pointer.scope_depth > 0) {
+                        semantic_error(sa, stmt->line, stmt->column, "cannot return pointer to local stack variable");
+                    }
                 }
             }
             break;
@@ -648,20 +760,22 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
         
         case AST_BLOCK_STMT: {
             symtable_enter_scope(sa->symtable);
+            sa->scope_depth++;
             bool unreachable = false;
             for (size_t i = 0; i < stmt->data.block.stmt_count; i++) {
                 if (unreachable) {
-                    semantic_error(sa, stmt->data.block.statements[i]->line, 
+                    semantic_error_ex(sa, "E0004", stmt->data.block.statements[i]->line, 
                                  stmt->data.block.statements[i]->column, 
-                                 "unreachable code detected");
+                                 "unreachable code detected", "this code will never be executed");
                     break;
                 }
                 analyze_stmt(sa, stmt->data.block.statements[i]);
-                // Mark as unreachable after return statement
-                if (stmt->data.block.statements[i]->type == AST_RETURN_STMT) {
+                // Mark as unreachable if current statement guarantees return/exit
+                if (check_return_paths(stmt->data.block.statements[i])) {
                     unreachable = true;
                 }
             }
+            sa->scope_depth--;
             symtable_exit_scope(sa->symtable);
             break;
         }
@@ -777,9 +891,34 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
 
         case AST_UNSAFE_STMT: {
             bool previous_unsafe = sa->in_unsafe_block;
+            bool previous_has_op = sa->current_block_has_unsafe_op;
+            
+            if (previous_unsafe) {
+                 // Already in unsafe block - nested unsafe is technically redundant
+                 // But we check for operations anyway
+            }
+            
             sa->in_unsafe_block = true;
+            sa->current_block_has_unsafe_op = false;
+            
             analyze_stmt(sa, stmt->data.unsafe_stmt.body);
+            
+            if (!sa->current_block_has_unsafe_op) {
+                if (sa->strict_unsafe_mode) {
+                    semantic_error(sa, stmt->line, stmt->column, "unnecessary unsafe block (strict mode)");
+                } else {
+                    // Warning
+                    fprintf(stderr, "warning: unnecessary unsafe block\n  --> :%zu:%zu\n", stmt->line, stmt->column);
+                }
+            }
+            
             sa->in_unsafe_block = previous_unsafe;
+            // Propagate up: if inner block had unsafe op, then outer block effectively had one too
+            if (sa->current_block_has_unsafe_op) {
+                sa->current_block_has_unsafe_op = true; 
+            } else {
+                sa->current_block_has_unsafe_op = previous_has_op;
+            }
             break;
         }
 
@@ -873,12 +1012,66 @@ static void resolve_type(SemanticAnalyzer *sa, Type *type) {
 bool semantic_analyze(SemanticAnalyzer *sa, ASTProgram *program) {
     if (!sa || !program) return false;
     
-    error_clear();
-    
+    // Pass 1: Declarations
     if (!semantic_analyze_declarations(sa, program)) return false;
+    
+    // Pass 2: Bodies
     if (!semantic_analyze_bodies(sa, program)) return false;
     
-    return !sa->had_error && error_count() == 0;
+    return !sa->had_error;
+}
+
+// Helper to check if a statement guarantees a return
+static bool check_return_paths(ASTStmt *stmt) {
+    if (!stmt) return false;
+    
+    switch (stmt->type) {
+        case AST_RETURN_STMT:
+        case AST_FAIL_STMT:
+            return true;
+            
+        case AST_BLOCK_STMT: {
+            // A block returns if any of its statements returns (and is reachable)
+            // But strict reaching check: if stmt returns, next ones are unreachable.
+            // For now, simpler check: find *some* returning statement.
+            for (size_t i = 0; i < stmt->data.block.stmt_count; i++) {
+                if (check_return_paths(stmt->data.block.statements[i])) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        case AST_IF_STMT: {
+            // Must return in BOTH branches
+            if (!stmt->data.if_stmt.else_branch) return false;
+            return check_return_paths(stmt->data.if_stmt.then_branch) &&
+                   check_return_paths(stmt->data.if_stmt.else_branch);
+        }
+        
+        // Loops do not guarantee return in general analysis without const folding
+        case AST_WHILE_STMT:
+        case AST_FOR_STMT:
+            return false;
+            
+        case AST_MATCH_STMT: {
+            // Must return in ALL cases
+            if (stmt->data.match_stmt.case_count == 0) return false;
+            
+            for (size_t i = 0; i < stmt->data.match_stmt.case_count; i++) {
+                if (!check_return_paths(stmt->data.match_stmt.cases[i].body)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+            
+        case AST_UNSAFE_STMT:
+             return check_return_paths(stmt->data.unsafe_stmt.body);
+             
+        default:
+            return false;
+    }
 }
 
 bool semantic_analyze_declarations(SemanticAnalyzer *sa, ASTProgram *program) {
@@ -1038,11 +1231,20 @@ bool semantic_analyze_bodies(SemanticAnalyzer *sa, ASTProgram *program) {
             // Analyze body
             analyze_stmt(sa, decl->data.function.body);
             
+            // Check return paths if not void
+            Type *ret_type = decl->data.function.return_type;
+            if (ret_type && ret_type->kind == TYPE_PRIMITIVE && ret_type->data.primitive == TOKEN_VOID) {
+                // Void functions don't need return
+            } else {
+                 if (!check_return_paths(decl->data.function.body)) {
+                     semantic_error_ex(sa, "E0003", decl->line, decl->column, "missing return statement in non-void function", "all execution paths must return a value");
+                 }
+            }
+            
             // Restore previous return type
             sa->current_function_return_type = prev_return_type;
             
             symtable_exit_scope(sa->symtable);
-        } else if (decl->type == AST_VAR_DECL_STMT) {
             if (decl->data.var_decl.initializer) {
                 analyze_expr(sa, decl->data.var_decl.initializer);
                 if (decl->data.var_decl.initializer->expr_type) {
@@ -1053,7 +1255,7 @@ bool semantic_analyze_bodies(SemanticAnalyzer *sa, ASTProgram *program) {
                           snprintf(error_msg, sizeof(error_msg), "global variable initializer type mismatch: expected '%s', got '%s'", t1, t2);
                           free(t1);
                           free(t2);
-                          semantic_error(sa, decl->line, decl->column, error_msg);
+                          semantic_error_ex(sa, "E0001", decl->line, decl->column, error_msg, "global constants/variables must be initialized with compatible types");
                      }
                 }
             }

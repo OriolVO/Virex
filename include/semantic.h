@@ -11,7 +11,11 @@ typedef struct {
     Type *current_function_return_type;
     bool in_unsafe_block;
     int loop_depth;
+    int scope_depth;
     bool had_error;
+    bool strict_unsafe_mode;
+    bool current_block_has_unsafe_op;
+    const char *current_filename;
 } SemanticAnalyzer;
 
 // Semantic analysis functions

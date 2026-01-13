@@ -1,0 +1,13 @@
+// tests/safety/escape_global.vx
+// Should pass
+
+var i32 global_var = 100;
+
+func get_global_ptr() -> i32* {
+    return &global_var; // OK: global lifetime
+}
+
+func main() -> i32 {
+    var i32* ptr = get_global_ptr();
+    return 0;
+}

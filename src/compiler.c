@@ -14,6 +14,7 @@ Project *project_create(void) {
     project->modules = NULL;
     project->module_count = 0;
     project->main_module = NULL;
+    project->strict_unsafe_mode = false;
     return project;
 }
 
@@ -128,6 +129,8 @@ bool project_analyze(Project *project) {
     for (size_t i = 0; i < project->module_count; i++) {
         Module *m = project->modules[i];
         SemanticAnalyzer *sa = semantic_create();
+        sa->strict_unsafe_mode = project->strict_unsafe_mode;
+        sa->current_filename = m->path;
         symtable_free(sa->symtable);
         sa->symtable = m->symtable;
         
@@ -196,6 +199,8 @@ bool project_analyze(Project *project) {
     for (size_t i = 0; i < project->module_count; i++) {
         Module *m = project->modules[i];
         SemanticAnalyzer *sa = semantic_create();
+        sa->strict_unsafe_mode = project->strict_unsafe_mode;
+        sa->current_filename = m->path;
         symtable_free(sa->symtable);
         sa->symtable = m->symtable;
         

@@ -1,0 +1,10 @@
+// tests/safety/unused_unsafe.vx
+// Should trigger warning "unnecessary unsafe block"
+
+func main() -> i32 {
+    unsafe {
+        var i32 x = 10;
+        x = x + 1;
+    }
+    return 0;
+}

@@ -1,0 +1,15 @@
+// tests/safety/scope_escape.vx
+// Should fail semantic analysis: assigning inner scope address to outer scope variable
+
+func main() -> i32 {
+    var i32* p;
+    {
+        var i32 x = 10;
+        // p is in outer scope (depth 1), x is in inner scope (depth 2)
+        // &x has scope_depth 2. p expects scope_depth <= 1.
+        p = &x; // Error: cannot assign pointer to value with shorter lifetime
+    }
+    
+    // Dereferencing p here would be use-after-free
+    return 0;
+}

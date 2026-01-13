@@ -1,0 +1,14 @@
+// tests/safety/ptr_arithmetic.vx
+// Should fail semantic analysis outside unsafe block
+
+func main() -> i32 {
+    var i32 x = 10;
+    var i32* p = &x; 
+    
+    // Case 1: Unsafe ptr arithmetic (Should pass inside unsafe)
+    unsafe {
+        var i32* p2 = p + 1;
+    }
+    
+    return 0;
+}

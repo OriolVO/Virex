@@ -108,10 +108,11 @@ void iropt_dead_code_elimination(IRModule *module) {
             }
         }
         
-        // Remove unreachable instructions
+        // Remove unreachable instructions and NOPs
         size_t write_idx = 0;
         for (size_t read_idx = 0; read_idx < func->instruction_count; read_idx++) {
-            if (reachable[read_idx]) {
+            IRInstruction *instr = func->instructions[read_idx]; // temp ptr
+            if (reachable[read_idx] && instr->opcode != IR_NOP) {
                 func->instructions[write_idx++] = func->instructions[read_idx];
             } else {
                 ir_instruction_free(func->instructions[read_idx]);
@@ -440,17 +441,78 @@ void iropt_strength_reduction(IRModule *module) {
     for (size_t f = 0; f < module->function_count; f++) {
         IRFunction *func = module->functions[f];
         
-        // Detect loops and look for multiplication by loop-invariant values
         for (size_t i = 0; i < func->instruction_count; i++) {
             IRInstruction *instr = func->instructions[i];
             
             // Look for multiplication: t = var * const
+            // or t = const * var
             if (instr->opcode == IR_MUL && instr->dest && instr->dest->kind == IR_OP_TEMP) {
-                // Check if one operand is constant
+                IROperand *const_op = NULL;
+                IROperand *var_op = NULL;
+                
                 if (instr->src2 && instr->src2->kind == IR_OP_CONST) {
-                    // This could be replaced with addition in a loop
-                    // For now, just mark it (full implementation would track loop induction variables)
-                    // TODO: Implement full strength reduction with induction variable analysis
+                    const_op = instr->src2;
+                    var_op = instr->src1;
+                } else if (instr->src1 && instr->src1->kind == IR_OP_CONST) {
+                    const_op = instr->src1;
+                    var_op = instr->src2;
+                }
+                
+                if (const_op && var_op) {
+                    long val = const_op->data.const_value;
+                    
+                    if (val == 0) {
+                        // x * 0 = 0
+                        // Replace with MOVE 0
+                        ir_operand_free(instr->src1);
+                        ir_operand_free(instr->src2);
+                        instr->opcode = IR_MOVE;
+                        instr->src1 = ir_operand_const(0);
+                        instr->src2 = NULL;
+                    } else if (val == 1) {
+                         // x * 1 = x
+                         // Replace with MOVE var
+                         // Need to copy var_op because we are freeing src1/src2
+                         IROperand *new_src = NULL;
+                         if (var_op->kind == IR_OP_TEMP) new_src = ir_operand_temp(var_op->data.temp_id);
+                         else if (var_op->kind == IR_OP_VAR) new_src = ir_operand_var(var_op->data.var_name);
+                         else if (var_op->kind == IR_OP_CONST) new_src = ir_operand_const(var_op->data.const_value);
+                         
+                         ir_operand_free(instr->src1);
+                         ir_operand_free(instr->src2);
+                         instr->opcode = IR_MOVE;
+                         instr->src1 = new_src;
+                         instr->src2 = NULL;
+                    } else {
+                        // Check if power of 2
+                        // x * 2^k = x << k
+                        // Only for positive values to be safe with shifts
+                        if (val > 0 && (val & (val - 1)) == 0) {
+                             int shift = 0;
+                             while ((val >> shift) > 1) shift++;
+                             
+                             // We don't have SHIFT opcode yet in IR! 
+                             // IR_ADD x, x if val is 2 is simpler and supported.
+                             if (val == 2) {
+                                 // Replace with ADD x, x
+                                 // Make copies of var_op
+                                 IROperand *op1 = NULL;
+                                 if (var_op->kind == IR_OP_TEMP) op1 = ir_operand_temp(var_op->data.temp_id);
+                                 else if (var_op->kind == IR_OP_VAR) op1 = ir_operand_var(var_op->data.var_name);
+                                 
+                                 if (op1) {
+                                     ir_operand_free(instr->src1);
+                                     ir_operand_free(instr->src2);
+                                     instr->opcode = IR_ADD;
+                                     instr->src1 = op1;
+                                     // Duplicate for src2
+                                     if (op1->kind == IR_OP_TEMP) instr->src2 = ir_operand_temp(op1->data.temp_id);
+                                     else if (op1->kind == IR_OP_VAR) instr->src2 = ir_operand_var(op1->data.var_name);
+                                 }
+                             }
+                             // If we add IR_SHL/IR_SHR later, we can use shift here for any power of 2
+                        }
+                    }
                 }
             }
         }
@@ -501,8 +563,17 @@ void iropt_dead_store_elimination_loops(IRModule *module) {
             }
             
             // If redefined before use, this is a dead store
-            // For now, we don't remove it (would need to handle carefully)
-            // TODO: Actually remove dead stores
+            if (is_redefined && !is_used) {
+                 // Safe to remove!
+                 // Replace with NOP
+                 if (instr->dest) ir_operand_free(instr->dest);
+                 if (instr->src1) ir_operand_free(instr->src1);
+                 if (instr->src2) ir_operand_free(instr->src2);
+                 instr->opcode = IR_NOP;
+                 instr->dest = NULL;
+                 instr->src1 = NULL;
+                 instr->src2 = NULL;
+            }
         }
     }
 }

@@ -1,0 +1,21 @@
+// tests/control_flow/match_full.vx
+// Should pass: exhaustive match
+
+enum Color {
+    Red,
+    Green,
+    Blue
+};
+
+func main() -> i32 {
+    var Color c = Red;
+    
+    match c {
+        Red => { return 0; }
+        Green => { return 2; }
+        Blue => { return 3; }
+    }
+    
+    // Unreachable because match covers all and returns
+    // return 0; 
+}

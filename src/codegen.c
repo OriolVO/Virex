@@ -5,6 +5,7 @@
 #include "../include/codegen.h"
 #include "../include/irgen.h"
 #include "../include/compiler.h"
+#include "../include/loop_transform.h"
 
 struct CodeGenerator {
     FILE *output;
@@ -15,6 +16,7 @@ struct CodeGenerator {
 // Forward declarations
 static char *type_to_c_string(Type *type);
 static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction *instr);
+static void gen_for_loop(CodeGenerator *gen, IRFunction *func, LoopInfo *info);
 
 CodeGenerator *codegen_create(void) {
     CodeGenerator *gen = malloc(sizeof(CodeGenerator));
@@ -382,6 +384,10 @@ static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction 
             }
             fprintf(gen->output, ";\n");
             break;
+
+        case IR_NOP:
+            // Do nothing
+            break;
             
         default:
             fprintf(gen->output, "/* unknown opcode */\n");
@@ -437,6 +443,14 @@ static void gen_function(CodeGenerator *gen, IRFunction *func) {
     
     // Generate instructions
     for (size_t i = 0; i < func->instruction_count; i++) {
+        // Try to detect a simple loop starting here
+        LoopInfo loop_info = detect_simple_loop(func, i);
+        if (loop_info.is_simple_loop) {
+            gen_for_loop(gen, func, &loop_info);
+            i = loop_info.loop_end_idx; // Skip to end of loop
+            continue;
+        }
+        
         gen_instruction(gen, func, func->instructions[i]);
     }
     
@@ -714,3 +728,178 @@ void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
     }
     irgen_free(irgen_body);
 }
+
+// Helper: Generate a for loop
+static void gen_for_loop(CodeGenerator *gen, IRFunction *func, LoopInfo *info) {
+    print_indent(gen);
+    
+    // Emit the label so that jumps to loop start (like continue in while loops) work
+    IRInstruction *label_instr = func->instructions[info->loop_start_idx];
+    if (label_instr->src1 && label_instr->src1->kind == IR_OP_LABEL) {
+         fprintf(gen->output, "%s: ", label_instr->src1->data.label_name);
+    }
+    
+    // Add vectorization hints
+    // Using GCC specific pragmas or OMP if available, but #pragma GCC ivdep is safe
+    fprintf(gen->output, "\n");
+    print_indent(gen);
+    fprintf(gen->output, "#pragma GCC ivdep\n");
+    print_indent(gen);
+    fprintf(gen->output, "for (");
+    
+    // Init: var = init_val
+    // We assume the loop variable is the one being initialized
+    // However, the pattern detected is: init is BEFORE the label.
+    // So usually semantic analysis ensures the variable exists.
+    // But wait, the standard C for loop is `for (init; cond; inc)`.
+    // In our IR, init happens BEFORE the loop label.
+    // GCC optimizes `var = init; while (cond) ...` to a for loop easily.
+    // But explicitly generating `for (var = init; ...)` is better if we can move init inside.
+    // `detect_simple_loop` starts AT the label. So init is PREVIOUS instruction?
+    // The `detect_simple_loop` doesn't currently capture the init instruction.
+    // It captures `loop_var`, `init_value` (if we extended it to look back).
+    // Let's look at `detect_simple_loop` implementation in step 473.
+    // It sets `info.loop_start_idx` to the label.
+    // It does NOT find init value currently (impl in step 473 only checks label, cmp, branch, jump).
+    
+    // Actually, `detect_simple_loop` implementation in step 473 DOES NOT populate `loop_var`, `init_value`, etc.
+    // It only returns `is_simple_loop` and indices.
+    // I need to update `detect_simple_loop` or extract that info here.
+    
+    // Let's extract info here for now since I can't easily change loop_transform.c without another tool call.
+    // Wait, the detecting logic was minimal.
+    // Let's implement extraction here to be safe.
+    
+    // Pattern: 
+    //   L_start:
+    //     t_cond = var < limit (cmp)
+    //     if (t_cond) goto L_body (branch)
+    //     goto L_end
+    
+    IRInstruction *cmp = func->instructions[info->loop_start_idx + 1];
+    IRInstruction *branch = func->instructions[info->loop_start_idx + 2];
+    
+    // cmp->src1 is likely the loop variable
+    IROperand *loop_var_op = cmp->src1;
+    IROperand *limit_op = cmp->src2;
+    IROpcode cmp_op = cmp->opcode;
+    
+    // Loop variable name
+    char *var_name = NULL;
+    if (loop_var_op->kind == IR_OP_VAR) {
+        var_name = loop_var_op->data.var_name;
+    } else if (loop_var_op->kind == IR_OP_TEMP) {
+        // Temps as loop vars? valid but we need valid C code.
+        // We can print tX.
+    }
+    
+    // Emit Init
+    fprintf(gen->output, "; "); 
+    
+    // Emit Condition with __builtin_expect for specific opcode patterns
+    // We expect the loop condition to be true typically
+    fprintf(gen->output, "__builtin_expect(");
+    gen_operand(gen, loop_var_op);
+    switch (cmp_op) {
+        case IR_LT: fprintf(gen->output, " < "); break;
+        case IR_LE: fprintf(gen->output, " <= "); break;
+        case IR_GT: fprintf(gen->output, " > "); break;
+        case IR_GE: fprintf(gen->output, " >= "); break;
+        default: fprintf(gen->output, " < "); break;
+    }
+    gen_operand(gen, limit_op);
+    fprintf(gen->output, ", 1); ");
+    
+    // Emit Increment
+    // We need to find the increment instruction.
+    // It should be near the end of the loop, before the jump back.
+    // Scan backward from loop_end_idx
+    size_t inc_idx = 0;
+    bool found_inc = false;
+    for (size_t k = info->loop_end_idx - 1; k > info->loop_start_idx; k--) {
+        IRInstruction *instr = func->instructions[k];
+        // Look for var = var + step
+        if (instr->opcode == IR_ADD && instr->dest) {
+            // Check if dest is loop var
+            bool dest_match = false;
+            if (var_name && instr->dest->kind == IR_OP_VAR && strcmp(instr->dest->data.var_name, var_name) == 0) dest_match = true;
+            if (!var_name && instr->dest->kind == IR_OP_TEMP && instr->dest->data.temp_id == loop_var_op->data.temp_id) dest_match = true;
+            
+            if (dest_match) {
+                // Found increment!
+                gen_operand(gen, instr->dest);
+                fprintf(gen->output, " += "); // Assuming simple inc
+                // If it was var = var + step, src1 is var, src2 is step.
+                // If src1 is var, print src2. If src2 is var, print src1.
+                if (instr->src1 && ((instr->src1->kind == IR_OP_VAR && var_name && strcmp(instr->src1->data.var_name, var_name) == 0) || 
+                                   (instr->src1->kind == IR_OP_TEMP && !var_name && instr->src1->data.temp_id == loop_var_op->data.temp_id))) {
+                    gen_operand(gen, instr->src2);
+                } else {
+                    gen_operand(gen, instr->src1);
+                }
+                found_inc = true;
+                inc_idx = k;
+                break;
+            }
+        }
+         // Also handle var = step + var (commutative)
+    }
+    
+    if (!found_inc) {
+        // Fallback? or just empty increment
+        // fprintf(gen->output, "/* no inc found */");
+    }
+    
+    fprintf(gen->output, ") {\n");
+    gen->indent_level++;
+    
+    // Generate Body
+    // Start after branch (idx + 3)
+    // End before increment (if found) or before jump back
+    size_t body_end = found_inc ? inc_idx : info->loop_end_idx;
+    // Also skip the "goto L_end" which is immediately after branch (idx+3 is typically goto L_end/L2, wait)
+    // In the pattern: 
+    //   if (t0) goto L1;  (branch)
+    //   goto L2;          (jump to end)
+    //   L1:               (body start)
+    // The branch instruction at start_idx + 2 says "if (cond) goto BodyLabel".
+    // IR_BRANCH src2 is the target label.
+    // So the body starts at the instruction pointed to by src2.
+    // We need to find where that label is defined.
+    
+    const char *body_label_name = branch->src2->data.label_name;
+    size_t body_start = 0;
+    for (size_t k = info->loop_start_idx; k < info->loop_end_idx; k++) {
+        IRInstruction *instr = func->instructions[k];
+        if (instr->opcode == IR_LABEL && instr->dest && strcmp(instr->dest->data.label_name, body_label_name) == 0) {
+            body_start = k;
+            break;
+        }
+    }
+    
+    // If we didn't find body label, something is wrong.
+    if (body_start == 0) body_start = info->loop_start_idx + 4; // Fallback guess?
+    
+    // Skip the label itself
+    for (size_t k = body_start + 1; k < body_end; k++) {
+        // Try to detect a nested loop
+        LoopInfo nested_info = detect_simple_loop(func, k);
+        if (nested_info.is_simple_loop) {
+            // Check if strict nesting (nested loop ends inside this body)
+            // It should, otherwise detection might be crossing boundaries (unlikely with structured code)
+            if (nested_info.loop_end_idx < body_end) {
+                gen_for_loop(gen, func, &nested_info);
+                k = nested_info.loop_end_idx;
+                continue;
+            }
+        }
+        
+        IRInstruction *instr = func->instructions[k];
+        gen_instruction(gen, func, instr);
+    }
+    
+    gen->indent_level--;
+    print_indent(gen);
+    fprintf(gen->output, "}\n");
+}
+

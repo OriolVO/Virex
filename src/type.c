@@ -16,6 +16,7 @@ Type *type_create_pointer(Type *base, bool non_null) {
     type->kind = TYPE_POINTER;
     type->data.pointer.base = base;
     type->data.pointer.non_null = non_null;
+    type->data.pointer.scope_depth = 0; // Default to global/unknown
     return type;
 }
 

@@ -1,0 +1,8 @@
+// tests/error/const_reassignment.vx
+// Should fail: reassignment of const variable
+
+func main() -> i32 {
+    const i32 x = 10;
+    x = 20; // Error: cannot assign to const variable
+    return 0;
+}

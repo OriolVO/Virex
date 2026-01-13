@@ -1,0 +1,9 @@
+// tests/control_flow/invalid_break.vx
+// Should fail semantic analysis: break outside loop
+
+func main() -> void {
+    var i32 x = 0;
+    if (x == 0) {
+        break; // Error: break statement outside of loop
+    }
+}

@@ -16,6 +16,7 @@ Symbol *symbol_create(const char *name, SymbolKind kind, Type *type, size_t line
     symbol->is_extern = false;
     symbol->line = line;
     symbol->column = column;
+    symbol->scope_depth = 0;
     symbol->param_count = 0;
     symbol->type_params = NULL;
     symbol->type_param_count = 0;

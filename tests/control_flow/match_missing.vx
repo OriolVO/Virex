@@ -1,0 +1,20 @@
+// tests/control_flow/match_exhaustive.vx
+// Should fail: non-exhaustive match
+
+enum Color {
+    Red,
+    Green,
+    Blue
+};
+
+func main() -> i32 {
+    var Color c = Red;
+    
+    // Error: missing 'Blue'
+    match c {
+        Red => { return 1; }
+        Green => { return 2; }
+    }
+    
+    return 0;
+}

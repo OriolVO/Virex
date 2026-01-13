@@ -33,6 +33,7 @@ typedef struct Symbol {
     bool is_extern;             // Whether it's an extern declaration
     size_t line;
     size_t column;
+    int scope_depth;            // 0 = global, >0 = local depth
     
     // For functions
     size_t param_count;

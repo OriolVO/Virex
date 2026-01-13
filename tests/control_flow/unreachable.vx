@@ -1,0 +1,7 @@
+// tests/control_flow/unreachable.vx
+// Should fail: unreachable code detected
+
+func main() -> i32 {
+    return 0;
+    var x = 10; // Unreachable
+}
