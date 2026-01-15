@@ -119,17 +119,6 @@ ASTExpr *ast_create_member(ASTExpr *object, const char *member, bool is_arrow, s
     return expr;
 }
 
-ASTExpr *ast_create_cast(Type *target_type, ASTExpr *expr_to_cast, size_t line, size_t column) {
-    ASTExpr *expr = malloc(sizeof(ASTExpr));
-    expr->type = AST_CAST_EXPR;
-    expr->line = line;
-    expr->column = column;
-    expr->expr_type = NULL;
-    expr->data.cast.target_type = target_type;
-    expr->data.cast.expr = expr_to_cast;
-    return expr;
-}
-
 // Statement creation functions
 
 ASTStmt *ast_create_expr_stmt(ASTExpr *expr, size_t line, size_t column) {
@@ -331,6 +320,17 @@ ASTDecl *ast_create_variable_decl(const char *name, Type *type, ASTExpr *initial
     return decl;
 }
 
+ASTDecl *ast_create_type_alias(const char *name, Type *target_type, bool is_public, size_t line, size_t column) {
+    ASTDecl *decl = malloc(sizeof(ASTDecl));
+    decl->type = AST_TYPE_ALIAS_DECL;
+    decl->line = line;
+    decl->column = column;
+    decl->data.type_alias.name = strdup(name);
+    decl->data.type_alias.target_type = target_type;
+    decl->data.type_alias.is_public = is_public;
+    return decl;
+}
+
 ASTProgram *ast_create_program(const char *module_name, ASTImportDecl **imports, size_t import_count, ASTDecl **decls, size_t count) {
     ASTProgram *program = malloc(sizeof(ASTProgram));
     program->module_name = module_name ? strdup(module_name) : NULL;
@@ -392,10 +392,6 @@ void ast_free_expr(ASTExpr *expr) {
         case AST_MEMBER_EXPR:
             ast_free_expr(expr->data.member.object);
             free(expr->data.member.member);
-            break;
-        case AST_CAST_EXPR:
-            type_free(expr->data.cast.target_type);
-            ast_free_expr(expr->data.cast.expr);
             break;
         default:
             break;
@@ -530,6 +526,10 @@ void ast_free_decl(ASTDecl *decl) {
                 free(decl->data.import_decl.alias);
             }
             break;
+        case AST_TYPE_ALIAS_DECL:
+            free(decl->data.type_alias.name);
+            type_free(decl->data.type_alias.target_type);
+            break;
         default:
             break;
     }
@@ -614,10 +614,6 @@ void ast_print_expr(const ASTExpr *expr, int indent) {
         case AST_MEMBER_EXPR:
             printf("Member: %s %s\n", expr->data.member.is_arrow ? "->" : ".", expr->data.member.member);
             ast_print_expr(expr->data.member.object, indent + 1);
-            break;
-        case AST_CAST_EXPR:
-            printf("Cast:\n");
-            ast_print_expr(expr->data.cast.expr, indent + 1);
             break;
         default:
             printf("Unknown expression\n");

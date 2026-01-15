@@ -3,9 +3,28 @@ build/
 *.o
 *.out
 virex
+virex_out
 
 # Generated code
 virex_out.c
+
+# Test binaries (leftovers from manual runs)
+typedef
+typedef_advanced
+array_list
+check_str
+enum_complex_bin
+enum_match_bin
+fail_test
+generic_struct_bin
+match_full_bin
+nested_structs_bin
+printf_test
+slice_comprehensive
+string_ffi_test
+test_enum
+test_slice
+unwrap_test_bin
 
 # Temporary test files
 test_*.vx

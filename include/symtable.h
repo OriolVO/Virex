@@ -32,6 +32,7 @@ typedef struct Symbol {
     bool is_public;
     bool is_packed;
     bool is_extern;             // Whether it's an extern declaration
+    bool is_type_alias;         // Whether it's a type alias (type Name = Target)
     size_t line;
     size_t column;
     int scope_depth;            // 0 = global, >0 = local depth

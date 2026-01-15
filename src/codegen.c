@@ -577,7 +577,6 @@ static char *type_to_c_string(Type *type) {
                 case TOKEN_F64: return strdup("double");
                 case TOKEN_BOOL: return strdup("int");
                 case TOKEN_VOID: return strdup("void");
-                case TOKEN_CSTRING: return strdup("const char*");
                 default: return strdup("long");
             }
         case TYPE_POINTER: {
@@ -832,6 +831,9 @@ void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
                      for (size_t f=0; f < decl->data.struct_decl.field_count; f++) {
                          collect_slice_types(decl->data.struct_decl.fields[f].field_type, &slice_types, &slice_count, &slice_capacity);
                      }
+                 } else if (decl->type == AST_TYPE_ALIAS_DECL) {
+                     // Type aliases are compile-time only, skip them
+                     continue;
                  }
              }
         }
@@ -855,6 +857,11 @@ void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
             for (size_t i = 0; i < scope->symbol_count; i++) {
                 Symbol *sym = scope->symbols[i];
                 if (sym->kind == SYMBOL_TYPE) {
+                    // Skip type aliases that are not structs/enums (actual definitions)
+                    if (sym->type->kind != TYPE_STRUCT && sym->type->kind != TYPE_ENUM) {
+                        continue;
+                    }
+
                     // 1. Skip if it's not the canonical name for this type (avoids aliases)
                     if (sym->type->data.struct_enum.name && 
                         strcmp(sym->name, sym->type->data.struct_enum.name) != 0) {

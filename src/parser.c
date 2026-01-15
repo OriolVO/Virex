@@ -30,6 +30,7 @@ static ASTStmt *parse_block(Parser *p);
 static ASTStmt *parse_unsafe_stmt(Parser *p);
 
 static ASTDecl *parse_declaration(Parser *p);
+static ASTDecl *parse_type_alias(Parser *p, bool is_public);
 static ASTDecl *parse_function(Parser *p, bool is_public);
 static ASTDecl *parse_struct(Parser *p, bool is_public, bool is_packed);
 static ASTDecl *parse_enum(Parser *p, bool is_public);
@@ -215,7 +216,7 @@ static Type *parse_type(Parser *p) {
         type = type_create_result(ok_type, err_type);
     }
     // Primitive types
-    else if (p->current->type >= TOKEN_I8 && p->current->type <= TOKEN_CSTRING) {
+    else if (p->current->type >= TOKEN_I8 && p->current->type <= TOKEN_VOID) {
         TokenType prim = p->current->type;
         advance(p);
         type = type_create_primitive(prim);
@@ -452,7 +453,7 @@ static ASTExpr *parse_postfix(Parser *p) {
             // Let's assume lexer is ready to read NEXT token.
             
             Token *peek = lexer_next_token(p->lexer);
-            bool is_generics = (peek->type >= TOKEN_I8 && peek->type <= TOKEN_CSTRING);
+            bool is_generics = (peek->type >= TOKEN_I8 && peek->type <= TOKEN_VOID);
             
             // Restore lexer state
             p->lexer->pos = pos;
@@ -546,19 +547,6 @@ static ASTExpr *parse_postfix(Parser *p) {
 }
 
 static ASTExpr *parse_primary(Parser *p) {
-    // Cast expression: cast<Type>(expr)
-    if (match(p, TOKEN_CAST)) {
-        size_t line = p->previous->line;
-        size_t column = p->previous->column;
-        expect(p, TOKEN_LT, "expected '<' after cast");
-        Type *target_type = parse_type(p);
-        expect(p, TOKEN_GT, "expected '>' after target type");
-        expect(p, TOKEN_LPAREN, "expected '(' after cast type");
-        ASTExpr *expr = parse_expression(p);
-        expect(p, TOKEN_RPAREN, "expected ')' after cast expression");
-        return ast_create_cast(target_type, expr, line, column);
-    }
-
     // Literals
     if (p->current->type == TOKEN_INTEGER || p->current->type == TOKEN_FLOAT ||
         p->current->type == TOKEN_STRING || p->current->type == TOKEN_TRUE ||
@@ -1046,6 +1034,10 @@ static ASTDecl *parse_declaration(Parser *p) {
     if (match(p, TOKEN_VAR) || match(p, TOKEN_CONST)) {
         return parse_global_var_decl(p, is_public);
     }
+
+    if (match(p, TOKEN_TYPEDEF)) {
+        return parse_type_alias(p, is_public);
+    }
     
     if (match(p, TOKEN_EXTERN)) {
         return parse_extern(p, is_public);
@@ -1287,6 +1279,21 @@ static ASTDecl *parse_enum(Parser *p, bool is_public) {
     expect(p, TOKEN_SEMICOLON, "expected ';' after enum declaration");
     
     return ast_create_enum(enum_name, type_params, type_param_count, variants, variant_count, is_public, line, column);
+}
+
+static ASTDecl *parse_type_alias(Parser *p, bool is_public) {
+    size_t line = p->previous->line;
+    size_t column = p->previous->column;
+
+    Token *name_token = expect(p, TOKEN_IDENTIFIER, "expected type alias name");
+    char *name = name_token ? strdup(name_token->lexeme) : strdup("");
+
+    expect(p, TOKEN_EQ, "expected '=' after type alias name");
+
+    Type *target_type = parse_type(p);
+    expect(p, TOKEN_SEMICOLON, "expected ';' after type alias declaration");
+
+    return ast_create_type_alias(name, target_type, is_public, line, column);
 }
 
 // Main parse function

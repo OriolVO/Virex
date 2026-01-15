@@ -719,13 +719,6 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             return NULL;
         }
 
-        case AST_CAST_EXPR: {
-            resolve_type(sa, expr->data.cast.target_type);
-            Type *expr_type = analyze_expr(sa, expr->data.cast.expr);
-            if (!expr_type) return NULL;
-            return type_clone(expr->data.cast.target_type);
-        }
-        
         default:
             return NULL;
     }
@@ -1180,24 +1173,55 @@ static void resolve_type(SemanticAnalyzer *sa, Type *type) {
             break;
         case TYPE_STRUCT:
         case TYPE_ENUM: {
-            // Look up type symbol (handles qualified names too)
-            Symbol *sym = find_type_symbol(sa, type->data.struct_enum.name);
-            if (sym && sym->kind == SYMBOL_TYPE) {
-                // Update the type name to the mangled one found in the symbol
-                // but ONLY if it's different to avoid redundant free/strdup
-                if (sym->type->data.struct_enum.name && 
-                    strcmp(type->data.struct_enum.name, sym->type->data.struct_enum.name) != 0) {
-                    free(type->data.struct_enum.name);
-                    type->data.struct_enum.name = strdup(sym->type->data.struct_enum.name);
+            Symbol *sym = NULL;
+            // Handle type aliases and resolution recursively
+            while (true) {
+                // Look up type symbol (handles qualified names too)
+                sym = find_type_symbol(sa, type->data.struct_enum.name);
+                if (sym && sym->kind == SYMBOL_TYPE) {
+                    if (sym->is_type_alias) {
+                        // Resolve the alias recursively
+                        Type *target = type_clone(sym->type);
+                        char *old_name = type->data.struct_enum.name;
+                        Type **old_args = type->data.struct_enum.type_args;
+                        size_t old_arg_count = type->data.struct_enum.type_arg_count;
+
+                        *type = *target;
+                        
+                        free(old_name);
+                        if (old_args) {
+                            for (size_t i = 0; i < old_arg_count; i++) {
+                                type_free(old_args[i]);
+                            }
+                            free(old_args);
+                        }
+                        free(target);
+
+                        if (type->kind != TYPE_STRUCT && type->kind != TYPE_ENUM) {
+                            return; // Target is not a named type, we're done resolving
+                        }
+                        continue; // Resolve the new named type
+                    }
+                    
+                    // Not an alias, it's a canonical definition
+                    // Update name for normalization/mangling if needed
+                    if (sym->type->data.struct_enum.name && 
+                        strcmp(type->data.struct_enum.name, sym->type->data.struct_enum.name) != 0) {
+                        free(type->data.struct_enum.name);
+                        type->data.struct_enum.name = strdup(sym->type->data.struct_enum.name);
+                    }
+                    
+                    if (sym->type->kind == TYPE_ENUM && type->kind == TYPE_STRUCT) {
+                        type->kind = TYPE_ENUM;
+                    }
+                    
+                    break;
+                } else {
+                    break; // Symbol not found
                 }
             }
             
-            if (sym && sym->kind == SYMBOL_TYPE && sym->type->kind == TYPE_ENUM && type->kind == TYPE_STRUCT) {
-                // Convert to ENUM
-                type->kind = TYPE_ENUM;
-            }
-            
-            // Resolve generic arguments first
+            // Resolve generic arguments if any
             for (size_t i = 0; i < type->data.struct_enum.type_arg_count; i++) {
                 resolve_type(sa, type->data.struct_enum.type_args[i]);
             }
@@ -1276,6 +1300,16 @@ static void resolve_type(SemanticAnalyzer *sa, Type *type) {
                 // Update type name to use mangled name
                 free(type->data.struct_enum.name);
                 type->data.struct_enum.name = strdup(inst->mangled_name);
+                
+                // Clear type arguments as they are now baked into the monomorphized type
+                if (type->data.struct_enum.type_args) {
+                    for (size_t i = 0; i < type->data.struct_enum.type_arg_count; i++) {
+                        type_free(type->data.struct_enum.type_args[i]);
+                    }
+                    free(type->data.struct_enum.type_args);
+                    type->data.struct_enum.type_args = NULL;
+                }
+                type->data.struct_enum.type_arg_count = 0;
             }
             break;
         }
@@ -1423,6 +1457,22 @@ bool semantic_analyze_declarations(SemanticAnalyzer *sa, ASTProgram *program) {
                                                      decl->line, decl->column);
                 mangled_symbol->is_public = decl->data.enum_decl.is_public;
                 symtable_insert(sa->symtable, mangled_symbol);
+            }
+        }
+        else if (decl->type == AST_TYPE_ALIAS_DECL) {
+            // Type alias: type MyInt = i32;
+            // Create a symbol with the alias name that points to the target type
+            Symbol *alias_symbol = symbol_create(decl->data.type_alias.name, SYMBOL_TYPE,
+                                                type_clone(decl->data.type_alias.target_type),
+                                                decl->line, decl->column);
+            alias_symbol->is_public = decl->data.type_alias.is_public;
+            alias_symbol->is_type_alias = true;
+            
+            if (!symtable_insert(sa->symtable, alias_symbol)) {
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), "duplicate declaration of type '%s'", decl->data.type_alias.name);
+                semantic_error(sa, decl->line, decl->column, error_msg);
+                continue;
             }
         }
     }

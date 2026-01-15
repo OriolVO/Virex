@@ -1,0 +1,22 @@
+
+import "std/ffi.vx";
+
+extern func printf(u8* fmt, ...) -> i32; // OK: Extern
+
+func should_fail_return() -> c_int { // Fail: Return type
+    return 0;
+}
+
+func should_fail_param(c_void* x) { // Fail: Param type (fixed syntax)
+}
+
+func main() -> i32 {
+    var c_int x = 10; // Fail: Variable outside unsafe
+    
+    unsafe {
+        var c_int y = 20; // OK: Inside unsafe
+        var u8* s = "test".data; // OK: Inside unsafe (no cstring)
+    }
+    
+    return 0;
+}

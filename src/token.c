@@ -64,17 +64,7 @@ const char *token_type_name(TokenType type) {
         case TOKEN_VOID: return "VOID";
         
         // C ABI types
-        case TOKEN_C_CHAR: return "C_CHAR";
-        case TOKEN_C_SHORT: return "C_SHORT";
-        case TOKEN_C_USHORT: return "C_USHORT";
-        case TOKEN_C_INT: return "C_INT";
-        case TOKEN_C_UINT: return "C_UINT";
-        case TOKEN_C_LONG: return "C_LONG";
-        case TOKEN_C_ULONG: return "C_ULONG";
-        case TOKEN_C_LONGLONG: return "C_LONGLONG";
-        case TOKEN_C_ULONGLONG: return "C_ULONGLONG";
-        case TOKEN_C_LONGDOUBLE: return "C_LONGDOUBLE";
-        case TOKEN_CSTRING: return "CSTRING";
+
         
         // Operators
         case TOKEN_PLUS: return "PLUS";

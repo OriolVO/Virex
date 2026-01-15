@@ -1,11 +1,13 @@
 module "printf_test";
 
+import "std/ffi.vx";
 // Declare external C function printf
-extern func printf(cstring format, ...) -> i32;
+// In C, printf takes const char* which is equivalent to u8* in Virex
+extern func printf(u8* format, ...) -> i32;
 
 func main() -> i32 {
-    printf(cast<cstring>("Hello from Virex FFI!\n"));
-    printf(cast<cstring>("Number: %d\n"), 42);
-    printf(cast<cstring>("String: %s, Number: %d\n"), cast<cstring>("test"), 123);
+    printf("Hello from Virex FFI!\n");
+    printf("Number: %d\n", 42);
+    printf("String: %s, Number: %d\n", "test", 123);
     return 0;
 }

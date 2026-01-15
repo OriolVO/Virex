@@ -1,0 +1,21 @@
+// FFI Module - C-Compatible ABI Types
+// These types provide ABI compatibility with C
+
+// C ABI integer types
+public type c_char = i8;
+public type c_short = i16;
+public type c_ushort = u16;
+public type c_int = i32;
+public type c_uint = u32;
+public type c_long = i64;
+public type c_ulong = u64;
+public type c_longlong = i64;
+public type c_ulonglong = u64;
+
+// C ABI floating point types
+public type c_float = f32;
+public type c_double = f64;
+public type c_longdouble = f64; // Note: actual long double is platform-specific
+
+// C void type (for void*)
+public type c_void = u8;

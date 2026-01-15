@@ -1,5 +1,6 @@
 module "std::string";
 
+import "std/ffi.vx";
 import "mem.vx" as mem;
 
 public struct String {
@@ -32,18 +33,18 @@ public func concat(String a, String b) -> String {
     return from_bytes(new_slice);
 }
 
-// Convert slice to C string (null-terminated)
-public func to_cstring(String s) -> cstring {
-    var i64 len = s.bytes.len;
-    var u8* ptr;
-    unsafe {
-        ptr = mem.alloc<u8>(len + 1);
-        mem.copy<u8>(ptr, s.bytes.data, len);
-        ptr[len] = 0; // null terminator
+    // Convert to C string (null-terminated)
+    // WARNING: The returned pointer is only valid as long as the String exists
+    public func to_cstring(String s) -> u8* {
+        // Allocate new buffer with null terminator
+        var u8* ptr;
+        unsafe {
+            ptr = mem.alloc<u8>(s.bytes.len + 1);
+            mem.copy<u8>(ptr, s.bytes.data, s.bytes.len);
+            ptr[s.bytes.len] = 0; // null terminator
+        }
+        return ptr;
     }
-    
-    return cast<cstring>(ptr);
-}
 
 // Slice substring
 public func slice(String s, i64 start, i64 end) -> String {

@@ -1,5 +1,7 @@
 module "result";
 
+import "std/ffi.vx";
+
 public func unwrap<T, E>(result<T, E> r) -> T {
     match r {
         ok(v) => { return v; }
@@ -9,7 +11,7 @@ public func unwrap<T, E>(result<T, E> r) -> T {
     }
 }
 
-public func expect<T, E>(result<T, E> r, cstring msg) -> T {
+public func expect<T, E>(result<T, E> r, u8* msg) -> T {
     match r {
         ok(v) => { return v; }
         err(e) => {

@@ -112,6 +112,7 @@ static int compile_file(const char *filename, int extra_argc, char **extra_argv)
         project_free(project);
         return 1;
     }
+
     if (!project_analyze(project)) {
         project_free(project);
         return 1;

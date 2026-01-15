@@ -17,6 +17,7 @@ typedef enum {
     TOKEN_RETURN,
     TOKEN_STRUCT,
     TOKEN_ENUM,
+    TOKEN_TYPEDEF,
     TOKEN_UNSAFE,
     TOKEN_BREAK,
     TOKEN_CONTINUE,
@@ -31,7 +32,6 @@ typedef enum {
     TOKEN_FAIL,
     TOKEN_NULL,
     TOKEN_IN,
-    TOKEN_CAST,
     
     // Primitive types
     TOKEN_I8,
@@ -48,17 +48,7 @@ typedef enum {
     TOKEN_VOID,
     
     // C ABI types
-    TOKEN_C_CHAR,
-    TOKEN_C_SHORT,
-    TOKEN_C_USHORT,
-    TOKEN_C_INT,
-    TOKEN_C_UINT,
-    TOKEN_C_LONG,
-    TOKEN_C_ULONG,
-    TOKEN_C_LONGLONG,
-    TOKEN_C_ULONGLONG,
-    TOKEN_C_LONGDOUBLE,
-    TOKEN_CSTRING,
+
     
     // Operators
     TOKEN_PLUS,         // +

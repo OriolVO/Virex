@@ -29,7 +29,14 @@ char *resolve_module_path(const char *current_file, const char *import_path) {
     
     free(dir_temp);
 
-    // 2. Try stdlib/
+    // 2. Try relative to CWD (for std/ffi.vx etc)
+    if (stat(import_path, &st) == 0) {
+        char *rp = realpath(import_path, NULL);
+        if (rp) return rp;
+        return strdup(import_path);
+    }
+
+    // 3. Try stdlib/
     snprintf(resolved, sizeof(resolved), "stdlib/%s", import_path);
     if (stat(resolved, &st) == 0) {
         char *rp = realpath(resolved, NULL);

@@ -1,0 +1,34 @@
+type MyI32 = i32;
+type AlsoI32 = MyI32;
+type StringSlice = []u8;
+
+struct Data {
+    MyI32 id;
+    StringSlice name;
+};
+
+type AliasData = Data;
+
+func add(MyI32 a, AlsoI32 b) -> MyI32 {
+    return a + b;
+}
+
+func get_id(AliasData d) -> MyI32 {
+    return d.id;
+}
+
+func main() -> i32 {
+    var MyI32 x = 10;
+    var AlsoI32 y = 20;
+    var MyI32 res = add(x, y);
+    
+    var AliasData d;
+    d.id = res;
+    d.name = "test";
+    
+    if (get_id(d) == 30) {
+        return 0;
+    }
+    
+    return 1;
+}

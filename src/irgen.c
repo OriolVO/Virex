@@ -24,7 +24,6 @@ static char *type_to_c_string(Type *type) {
                 case TOKEN_F64: return strdup("double");
                 case TOKEN_BOOL: return strdup("int");
                 case TOKEN_VOID: return strdup("void");
-                case TOKEN_CSTRING: return strdup("const char*");
                 default: return strdup("long");
             }
             
@@ -453,13 +452,6 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
             
             return ir_operand_temp(temp);
         }
-
-        case AST_CAST_EXPR: {
-            IROperand *operand = lower_expr(gen, expr->data.cast.expr);
-            int temp = new_temp(gen, expr->expr_type);
-            emit(gen, ir_instruction_create(IR_CAST, ir_operand_temp(temp), operand, NULL));
-            return ir_operand_temp(temp);
-        }
         
         case AST_CALL_EXPR: {
             IROperand **args = NULL;
@@ -608,11 +600,11 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
                             switch (t->data.primitive) {
                                 case TOKEN_I32: suffix = "_i32"; break;
                                 case TOKEN_I64: suffix = "_i64"; break;
-                                case TOKEN_F32: suffix = "_f64"; break; // Use f64 for both for now
+                                case TOKEN_U64: suffix = "_u64"; break;
+                                case TOKEN_F32: suffix = "_f32"; break;
                                 case TOKEN_F64: suffix = "_f64"; break;
                                 case TOKEN_BOOL: suffix = "_bool"; break;
-                                case TOKEN_CSTRING: suffix = "_str"; break;
-                                default: break;
+                                default: suffix = "_unknown"; break;
                             }
                         } else if (t->kind == TYPE_ENUM) {
                             suffix = "_i32";

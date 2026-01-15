@@ -1,14 +1,15 @@
 module "string_ffi_test";
 
+import "std/ffi.vx";
 import "io.vx";
 
-extern func strlen(cstring s) -> i32;
-extern func strcmp(cstring s1, cstring s2) -> i32;
+extern func strlen(u8* s) -> u64;
+extern func strcmp(u8* s1, u8* s2) -> i32;
 
 func main() -> i32 {
-    var cstring s1 = cast<cstring>("hello");
-    var cstring s2 = cast<cstring>("world");
-    var cstring s3 = cast<cstring>("hello");
+    var []u8 s1 = "hello";
+    var []u8 s2 = "world";
+    var []u8 s3 = "hello";
 
     io.print("Testing string FFI (strlen/strcmp):"); io.print("\n");
 

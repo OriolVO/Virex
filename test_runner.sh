@@ -48,7 +48,7 @@ for test in $TEST_FILES; do
     fi
     if [ $? -ne 0 ]; then
         # Check if it was supposed to fail
-        if [[ "$test_name" == "visibility.vx" ]] || [[ "$test_name" == "circular_a.vx" ]] || [[ "$test_name" == "circular_b.vx" ]] || [[ "$test_name" == "escape_local.vx" ]] || [[ "$test_name" == "unsafe_ffi.vx" ]] || [[ "$test_name" == "scope_escape.vx" ]] || [[ "$test_name" == "missing_return.vx" ]] || [[ "$test_name" == "missing_return_if.vx" ]] || [[ "$test_name" == "unreachable.vx" ]] || [[ "$test_name" == "invalid_break.vx" ]] || [[ "$test_name" == "match_missing.vx" ]] || [[ "$test_name" == "const_reassignment.vx" ]] || [[ "$test_name" == "type_mismatch.vx" ]] || [[ "$test_name" == "arg_count_mismatch.vx" ]] || [[ "$test_name" == "enhanced_error_test.vx" ]]; then
+        if [[ "$test_name" == "visibility.vx" ]] || [[ "$test_name" == "circular_a.vx" ]] || [[ "$test_name" == "circular_b.vx" ]] || [[ "$test_name" == "escape_local.vx" ]] || [[ "$test_name" == "unsafe_ffi.vx" ]] || [[ "$test_name" == "scope_escape.vx" ]] || [[ "$test_name" == "missing_return.vx" ]] || [[ "$test_name" == "missing_return_if.vx" ]] || [[ "$test_name" == "unreachable.vx" ]] || [[ "$test_name" == "invalid_break.vx" ]] || [[ "$test_name" == "match_missing.vx" ]] || [[ "$test_name" == "const_reassignment.vx" ]] || [[ "$test_name" == "type_mismatch.vx" ]] || [[ "$test_name" == "arg_count_mismatch.vx" ]] || [[ "$test_name" == "enhanced_error_test.vx" ]] || [[ "$test_name" == "strict_ctypes.vx" ]]; then
             echo -e "${GREEN}PASSED${NC} (Expected failure)"
             PASSED=$((PASSED + 1))
         else

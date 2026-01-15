@@ -23,6 +23,7 @@ static const KeywordEntry keywords[] = {
     {"return", TOKEN_RETURN},
     {"struct", TOKEN_STRUCT},
     {"enum", TOKEN_ENUM},
+    {"type", TOKEN_TYPEDEF},
     {"unsafe", TOKEN_UNSAFE},
     {"break", TOKEN_BREAK},
     {"continue", TOKEN_CONTINUE},
@@ -53,18 +54,7 @@ static const KeywordEntry keywords[] = {
     {"bool", TOKEN_BOOL},
     {"void", TOKEN_VOID},
     // C ABI types
-    {"c_char", TOKEN_C_CHAR},
-    {"c_short", TOKEN_C_SHORT},
-    {"c_ushort", TOKEN_C_USHORT},
-    {"c_int", TOKEN_C_INT},
-    {"c_uint", TOKEN_C_UINT},
-    {"c_long", TOKEN_C_LONG},
-    {"c_ulong", TOKEN_C_ULONG},
-    {"c_longlong", TOKEN_C_LONGLONG},
-    {"c_ulonglong", TOKEN_C_ULONGLONG},
-    {"c_longdouble", TOKEN_C_LONGDOUBLE},
-    {"cstring", TOKEN_CSTRING},
-    {"cast", TOKEN_CAST},
+
     {NULL, TOKEN_EOF} // Sentinel
 };
 

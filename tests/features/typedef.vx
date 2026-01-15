@@ -1,0 +1,9 @@
+type MyInt = i32;
+type ByteSlice = []u8;
+
+func main() -> i32 {
+    var MyInt x = 42;
+    var ByteSlice s = "hello world";
+    
+    return x - 42;
+}

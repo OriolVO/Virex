@@ -23,7 +23,6 @@ typedef enum {
     AST_INDEX_EXPR,
     AST_SLICE_EXPR,
     AST_MEMBER_EXPR,
-    AST_CAST_EXPR,
     
     // Statements
     AST_EXPR_STMT,
@@ -45,6 +44,7 @@ typedef enum {
     AST_ENUM_DECL,
     AST_MODULE_DECL,
     AST_IMPORT_DECL,
+    AST_TYPE_ALIAS_DECL,
     
     // Program
     AST_PROGRAM,
@@ -293,6 +293,13 @@ typedef struct {
     char *alias;        // Optional alias (NULL if no alias)
 } ASTImportDecl;
 
+// Type alias declaration
+typedef struct {
+    char *name;
+    Type *target_type;
+    bool is_public;
+} ASTTypeAliasDecl;
+
 // Global variable declaration
 typedef struct {
     bool is_const;
@@ -313,6 +320,7 @@ struct ASTDecl {
         ASTEnumDecl enum_decl;
         ASTModuleDecl module_decl;
         ASTImportDecl import_decl;
+        ASTTypeAliasDecl type_alias;
         ASTGlobalVarDecl var_decl;
     } data;
 };
@@ -369,6 +377,7 @@ ASTDecl *ast_create_enum(const char *name, char **type_params, size_t type_param
 ASTDecl *ast_create_module(const char *module_name, size_t line, size_t column);
 ASTDecl *ast_create_import(const char *import_path, const char *alias, size_t line, size_t column);
 ASTDecl *ast_create_variable_decl(const char *name, Type *type, ASTExpr *initializer, bool is_const, bool is_public, size_t line, size_t column);
+ASTDecl *ast_create_type_alias(const char *name, Type *target_type, bool is_public, size_t line, size_t column);
 
 ASTProgram *ast_create_program(const char *module_name, ASTImportDecl **imports, size_t import_count, ASTDecl **decls, size_t count);
 

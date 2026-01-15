@@ -29,18 +29,22 @@ run_benchmark() {
     local cmd=$2
     local color=$3
     
-    echo -e "${color}Running: $name${NC}"
+    echo -e "${color}Running: $name${NC}" >&2
     
     local total=0
     local times=()
     
     for i in $(seq 1 $ITERATIONS); do
-        # Use /usr/bin/time with custom format for precise timing
-        # %e = elapsed real time in seconds (with decimals)
-        local elapsed=$(/usr/bin/time -f "%e" $cmd 2>&1 >/dev/null | tail -n 1)
+        # Use date +%s.%N for nanosecond precision
+        local start_ts=$(date +%s.%N)
+        $cmd >/dev/null 2>&1
+        local end_ts=$(date +%s.%N)
+        
+        # Calculate elapsed time using bc
+        local elapsed=$(echo "$end_ts - $start_ts" | bc)
         times+=($elapsed)
         total=$(echo "$total + $elapsed" | bc)
-        echo -e "  Iteration $i: ${elapsed}s"
+        echo -e "  Iteration $i: ${elapsed}s" >&2
     done
     
     local avg=$(echo "scale=6; $total / $ITERATIONS" | bc)
@@ -57,8 +61,8 @@ run_benchmark() {
         fi
     done
     
-    echo -e "  ${GREEN}Average: ${avg}s${NC} (min: ${min}s, max: ${max}s)"
-    echo ""
+    echo -e "  ${GREEN}Average: ${avg}s${NC} (min: ${min}s, max: ${max}s)" >&2
+    echo "" >&2
     
     # Return average for comparison
     echo "$avg"

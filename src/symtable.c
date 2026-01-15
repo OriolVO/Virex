@@ -15,6 +15,7 @@ Symbol *symbol_create(const char *name, SymbolKind kind, Type *type, size_t line
     symbol->is_public = false;
     symbol->is_packed = false;
     symbol->is_extern = false;
+    symbol->is_type_alias = false;
     symbol->line = line;
     symbol->column = column;
     symbol->scope_depth = 0;
@@ -71,14 +72,15 @@ static void scope_free(Scope *scope) {
 }
 
 static bool scope_insert(Scope *scope, Symbol *symbol) {
-    // Check for duplicate in current scope
+    if (!scope || !symbol) return false;
+    
+    // Check for duplicate
     for (size_t i = 0; i < scope->symbol_count; i++) {
         if (strcmp(scope->symbols[i]->name, symbol->name) == 0) {
-            return false; // Duplicate
+            return false;
         }
     }
     
-    // Resize if needed
     if (scope->symbol_count >= scope->symbol_capacity) {
         scope->symbol_capacity = scope->symbol_capacity == 0 ? 8 : scope->symbol_capacity * 2;
         scope->symbols = realloc(scope->symbols, sizeof(Symbol*) * scope->symbol_capacity);
