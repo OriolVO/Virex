@@ -6,18 +6,18 @@ struct Point {
 };
 
 func main() -> i32 {
-    io.println("Testing Structs:");
+    io.print("Testing Structs:"); io.print("\n");
     
     var Point p;
     p.x = 10;
     p.y = 20;
     
     if (p.x == 10 && p.y == 20) {
-        io.println("Struct members set correctly.");
-        io.print("p.x: "); io.println(p.x);
-        io.print("p.y: "); io.println(p.y);
+        io.print("Struct members set correctly."); io.print("\n");
+        io.print("p.x: "); io.print(p.x); io.print("\n");
+        io.print("p.y: "); io.print(p.y); io.print("\n");
     } else {
-        io.println("Error: Struct member mismatch.");
+        io.print("Error: Struct member mismatch."); io.print("\n");
         return 1;
     }
     

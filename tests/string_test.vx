@@ -1,0 +1,25 @@
+import "io.vx";
+import "string.vx" as String;
+
+func main() -> i32 {
+    var []u8 lit = "Hello";
+    io.print("Literal as slice: ");
+    io.print(lit);
+    io.print("\n");
+    
+    var String.String s = String.from_bytes(lit);
+    
+    io.print("String len: ");
+    io.print(String.len(s));
+    io.print("\n");
+    
+    var []u8 lit2 = " World";
+    var String.String s2 = String.from_bytes(lit2);
+    
+    var String.String combined = String.concat(s, s2);
+    io.print("Combined: ");
+    io.print(combined.bytes); // Print slice directly
+    io.print("\n");
+    
+    return 0;
+}

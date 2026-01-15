@@ -13,6 +13,7 @@ Symbol *symbol_create(const char *name, SymbolKind kind, Type *type, size_t line
     symbol->is_const = false;
     symbol->is_initialized = false;
     symbol->is_public = false;
+    symbol->is_packed = false;
     symbol->is_extern = false;
     symbol->line = line;
     symbol->column = column;

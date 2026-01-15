@@ -19,6 +19,13 @@ IROperand *ir_operand_const(long value) {
     return op;
 }
 
+IROperand *ir_operand_float(double value) {
+    IROperand *op = malloc(sizeof(IROperand));
+    op->kind = IR_OP_FLOAT;
+    op->data.float_value = value;
+    return op;
+}
+
 IROperand *ir_operand_var(const char *name) {
     IROperand *op = malloc(sizeof(IROperand));
     op->kind = IR_OP_VAR;
@@ -60,6 +67,7 @@ IROperand *ir_operand_clone(IROperand *op) {
         case IR_OP_VAR: return ir_operand_var(op->data.var_name);
         case IR_OP_LABEL: return ir_operand_label(op->data.label_name);
         case IR_OP_STRING: return ir_operand_string(op->data.string_value);
+        case IR_OP_FLOAT: return ir_operand_float(op->data.float_value);
         default: return NULL;
     }
 }
@@ -242,6 +250,9 @@ void ir_operand_print(IROperand *op) {
         case IR_OP_STRING:
             printf("\"%s\"", op->data.string_value);
             break;
+        case IR_OP_FLOAT:
+            printf("%g", op->data.float_value);
+            break;
     }
 }
 
@@ -272,6 +283,9 @@ const char *ir_opcode_name(IROpcode opcode) {
         case IR_RETURN: return "RETURN";
         case IR_MOVE: return "MOVE";
         case IR_NEG: return "NEG";
+        case IR_ADDR: return "ADDR";
+        case IR_DEREF: return "DEREF";
+        case IR_CAST: return "CAST";
         default: return "UNKNOWN";
     }
 }

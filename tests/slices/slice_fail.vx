@@ -1,0 +1,9 @@
+import "io.vx";
+
+func main() -> i32 {
+    var [5]i32 arr;
+    io.print("Trying slice [0..6] (out of bounds for size 5)...\n");
+    var []i32 bad = arr[0..6]; 
+    io.print("Should not be reached!\n");
+    return 0;
+}

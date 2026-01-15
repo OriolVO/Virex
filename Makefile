@@ -30,9 +30,13 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link object files to create executable
-$(TARGET): $(OBJS)
+$(TARGET): $(OBJS) runtime/virex_runtime.o
 	$(CC) $(OBJS) $(LDFLAGS) -o $(TARGET)
 	@echo "Build complete: $(TARGET)"
+
+# Build runtime object
+runtime/virex_runtime.o: runtime/virex_runtime.c
+	$(CC) -O2 -c runtime/virex_runtime.c -o runtime/virex_runtime.o
 
 # Clean build artifacts
 clean:

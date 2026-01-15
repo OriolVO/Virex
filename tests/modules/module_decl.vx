@@ -3,6 +3,6 @@ module "sanitized::module::test";
 import "io.vx";
 
 func main() -> i32 {
-    io.println("Testing Module Name Sanitization:");
+    io.print("Testing Module Name Sanitization:"); io.print("\n");
     return 0;
 }

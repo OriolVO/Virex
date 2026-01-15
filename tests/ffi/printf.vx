@@ -4,8 +4,8 @@ module "printf_test";
 extern func printf(cstring format, ...) -> i32;
 
 func main() -> i32 {
-    printf("Hello from Virex FFI!\n");
-    printf("Number: %d\n", 42);
-    printf("String: %s, Number: %d\n", "test", 123);
+    printf(cast<cstring>("Hello from Virex FFI!\n"));
+    printf(cast<cstring>("Number: %d\n"), 42);
+    printf(cast<cstring>("String: %s, Number: %d\n"), cast<cstring>("test"), 123);
     return 0;
 }

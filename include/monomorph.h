@@ -10,6 +10,10 @@ typedef struct {
     ASTDecl **instantiated_functions;
     size_t instantiated_count;
     size_t instantiated_capacity;
+    
+    ASTDecl **instantiated_types; // Structs and Enums
+    size_t instantiated_types_count;
+    size_t instantiated_types_capacity;
 } MonomorphContext;
 
 // Create monomorphization context
@@ -27,5 +31,15 @@ bool is_generic_function(ASTDecl *decl);
 
 // Instantiate a generic function with concrete types
 ASTDecl *instantiate_generic_function(MonomorphContext *ctx, ASTDecl *generic_func, Type **concrete_types, size_t type_count);
+
+// Check if a type is generic
+bool is_generic_type(ASTDecl *decl);
+
+// Instantiate a generic type (struct/enum) with concrete types
+Type *instantiate_type(MonomorphContext *ctx, Type *type);
+
+// Instantiate generic declarations
+ASTDecl *instantiate_generic_struct(MonomorphContext *ctx, ASTDecl *generic_struct, Type **concrete_types, size_t type_count);
+ASTDecl *instantiate_generic_enum(MonomorphContext *ctx, ASTDecl *generic_enum, Type **concrete_types, size_t type_count);
 
 #endif // MONOMORPH_H

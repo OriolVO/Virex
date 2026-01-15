@@ -11,28 +11,48 @@ static char *type_to_c_string(Type *type) {
     
     switch (type->kind) {
         case TYPE_PRIMITIVE:
-            if (type->data.primitive == TOKEN_F64) return strdup("double");
-            if (type->data.primitive == TOKEN_VOID) return strdup("void");
-            if (type->data.primitive == TOKEN_CSTRING) return strdup("const char*");
-            return strdup("long"); // Default all ints/bools to long
+            switch (type->data.primitive) {
+                case TOKEN_I8: return strdup("int8_t");
+                case TOKEN_U8: return strdup("uint8_t");
+                case TOKEN_I16: return strdup("int16_t");
+                case TOKEN_U16: return strdup("uint16_t");
+                case TOKEN_I32: return strdup("int32_t");
+                case TOKEN_U32: return strdup("uint32_t");
+                case TOKEN_I64: return strdup("long long");
+                case TOKEN_U64: return strdup("uint64_t");
+                case TOKEN_F32: return strdup("float");
+                case TOKEN_F64: return strdup("double");
+                case TOKEN_BOOL: return strdup("int");
+                case TOKEN_VOID: return strdup("void");
+                case TOKEN_CSTRING: return strdup("const char*");
+                default: return strdup("long");
+            }
             
         case TYPE_STRUCT: {
-            // If it's a single uppercase letter, it's likely a type parameter
-            // and we don't have monomorphization yet, so treat as long.
-            if (strlen(type->data.name) == 1 && type->data.name[0] >= 'A' && type->data.name[0] <= 'Z') {
-                return strdup("long");
+            if (strlen(type->data.struct_enum.name) == 1 && type->data.struct_enum.name[0] >= 'A' && type->data.struct_enum.name[0] <= 'Z') {
+                return strdup("uint8_t"); 
             }
             char buf[256];
-            snprintf(buf, 256, "struct %s", type->data.name);
+            snprintf(buf, 256, "struct %s", type->data.struct_enum.name);
             return strdup(buf);
         }
         
         case TYPE_ENUM:
+            if (type->data.struct_enum.name) {
+                char buf[256];
+                snprintf(buf, 256, "enum %s", type->data.struct_enum.name);
+                return strdup(buf);
+            }
             return strdup("long");
 
-        case TYPE_RESULT:
-            return strdup("long"); // Treat as pointer cast to long
-            
+        case TYPE_ARRAY: {
+            char *elem = type_to_c_string(type->data.array.element);
+            char buf[256];
+            snprintf(buf, 256, "%s[%zu]", elem, type->data.array.size);
+            free(elem);
+            return strdup(buf);
+        }
+
         case TYPE_POINTER: {
              char *base = type_to_c_string(type->data.pointer.base);
              char buf[256];
@@ -41,14 +61,30 @@ static char *type_to_c_string(Type *type) {
              return strdup(buf);
         }
         
-        case TYPE_ARRAY: {
-             char *elem = type_to_c_string(type->data.array.element);
-             char buf[256];
-             snprintf(buf, 256, "%s*", elem);
-             free(elem);
-             return strdup(buf);
+        case TYPE_SLICE: {
+            char *elem_str = type_to_c_string(type->data.slice.element);
+            char *clean_elem = malloc(strlen(elem_str) + 1);
+            size_t j = 0;
+            for (size_t i = 0; elem_str[i]; i++) {
+                if (elem_str[i] != ' ' && elem_str[i] != '*') {
+                    clean_elem[j++] = elem_str[i];
+                }
+            }
+            clean_elem[j] = '\0';
+            
+            char buf[256];
+            snprintf(buf, 256, "struct Slice_%s", clean_elem);
+            free(elem_str);
+            free(clean_elem);
+            return strdup(buf);
         }
+
+        case TYPE_RESULT:
+            return strdup("struct Result*");
         
+        case TYPE_FUNCTION:
+            return strdup("void*");
+            
         default: return strdup("long");
     }
 }
@@ -126,6 +162,7 @@ static int new_temp(IRGenerator *gen, Type *type) {
 }
 
 static void sanitize_name(char *name) {
+    if (!name) return;
     for (char *p = name; *p; p++) {
         if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '_')) {
             *p = '_';
@@ -246,7 +283,30 @@ static void get_member_access_string(IRGenerator *gen, ASTExpr *expr, char *buf,
              snprintf(index_str, 64, "0"); // Invalid index
         }
         
-        snprintf(buf, size, "%s[%s]", base, index_str);
+        // Check if it's a slice: access .data
+        if (expr->data.index.array->expr_type && expr->data.index.array->expr_type->kind == TYPE_SLICE) {
+            // Emit bounds check
+            char len_access[300];
+            snprintf(len_access, 300, "%s.len", base);
+            IROperand *len_op = ir_operand_var(len_access);
+            
+            // Re-use index_op for the check call
+            IROperand **args = malloc(sizeof(IROperand*) * 2);
+            // We need to clone index_op because we generated a string from it, but passing it to call consumes it.
+            // Wait, we generate string FIRST using data. Then pass op to call.
+            // The op pointer is valid until call is freed.
+            // So we can pass it directly.
+            args[0] = index_op; 
+            args[1] = len_op;
+            
+            emit(gen, ir_instruction_create_call(NULL, ir_operand_var("virex_slice_bounds_check"), args, 2));
+
+            snprintf(buf, size, "%s.data[%s]", base, index_str);
+        } else {
+            // Not a slice (array), no check yet. Free unused operand.
+            ir_operand_free(index_op); 
+            snprintf(buf, size, "%s[%s]", base, index_str);
+        }
     } else {
         strncpy(buf, "unknown", size);
     }
@@ -280,6 +340,8 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
             // Return constant operand
             if (expr->data.literal.token->type == TOKEN_INTEGER) {
                 return ir_operand_const(expr->data.literal.token->value.int_value);
+            } else if (expr->data.literal.token->type == TOKEN_FLOAT) {
+                return ir_operand_float(expr->data.literal.token->value.float_value);
             } else if (expr->data.literal.token->type == TOKEN_TRUE) {
                 return ir_operand_const(1);
             } else if (expr->data.literal.token->type == TOKEN_FALSE) {
@@ -391,6 +453,13 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
             
             return ir_operand_temp(temp);
         }
+
+        case AST_CAST_EXPR: {
+            IROperand *operand = lower_expr(gen, expr->data.cast.expr);
+            int temp = new_temp(gen, expr->expr_type);
+            emit(gen, ir_instruction_create(IR_CAST, ir_operand_temp(temp), operand, NULL));
+            return ir_operand_temp(temp);
+        }
         
         case AST_CALL_EXPR: {
             IROperand **args = NULL;
@@ -427,9 +496,13 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
                         }
                     }
                     
-                    if (is_extern && strcmp(target_module_name, "io") != 0 && strcmp(target_module_name, "std::io") != 0) {
-                        // Use name as-is (for builtins/externs), but NOT for io/std::io which are builtins
+                    if (is_extern && strcmp(target_module_name, "io") != 0 && strcmp(target_module_name, "std::io") != 0 &&
+                        strcmp(target_module_name, "math") != 0 && strcmp(target_module_name, "std::math") != 0) {
+                        // Use name as-is (for builtins/externs), but NOT for math which we mangle
                         strncpy(mangled_func_name, member_name, 511);
+                    } else if (strcmp(target_module_name, "math") == 0 || strcmp(target_module_name, "std::math") == 0) {
+                        snprintf(mangled_func_name, 512, "virex_math_%s", member_name);
+                        is_extern = false; 
                     } else if ((strcmp(target_module_name, "io") == 0 || strcmp(target_module_name, "std::io") == 0) && 
                                (strcmp(member_name, "print") == 0 || strcmp(member_name, "println") == 0)) {
                         // Special handling for io.print and io.println - use virex_ prefix
@@ -445,9 +518,9 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
                         }
                         is_extern = false;
                     } else {
-                        char mod_name_buf[256];
-                        strncpy(mod_name_buf, target_module_name, 255);
-                        mod_name_buf[255] = '\0';
+                        char mod_name_buf[512];
+                        strncpy(mod_name_buf, target_module_name, 511);
+                        mod_name_buf[511] = '\0';
                         sanitize_name(mod_name_buf);
                         
                         snprintf(mangled_func_name, 512, "%s__%s", mod_name_buf, member_name);
@@ -462,6 +535,15 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
                 
                 // Check if this is an extern function
                 Symbol *func_sym = symtable_lookup(gen->symtable, name);
+                /*
+                if (func_sym) {
+                     printf("Debug IRGen: Found symbol '%s', kind=%d, is_extern=%d\n", name, func_sym->kind, func_sym->is_extern);
+                } else {
+                     printf("Debug IRGen: Symbol '%s' NOT FOUND in symtable %p\n", name, (void*)gen->symtable);
+                }
+                */
+
+
                 if (func_sym && func_sym->kind == SYMBOL_FUNCTION && func_sym->is_extern) {
                     // Don't mangle extern functions
                     strncpy(mangled_func_name, name, 511);
@@ -479,7 +561,11 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
                     strncpy(mangled_func_name, name, 511);
                     found_name = true;
                 } else {
-                    snprintf(mangled_func_name, 511, "%s__%s", gen->module_name, name);
+                    char mod_name_buf[512];
+                    strncpy(mod_name_buf, gen->module_name, 511);
+                    mod_name_buf[511] = '\0';
+                    sanitize_name(mod_name_buf);
+                    snprintf(mangled_func_name, 511, "%s__%s", mod_name_buf, name);
                     found_name = true;
                 }
             }
@@ -500,11 +586,19 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
                     strncpy(mangled_func_name, "virex_result_ok", 511);
                 } else if (strcmp(mangled_func_name, "result::err") == 0) {
                     strncpy(mangled_func_name, "virex_result_err", 511);
+                } else if (strncmp(mangled_func_name, "std::math::", 11) == 0) {
+                    char math_func[512];
+                    snprintf(math_func, sizeof(math_func), "virex_math_%s", mangled_func_name + 11);
+                    strncpy(mangled_func_name, math_func, 511);
+                } else if (strncmp(mangled_func_name, "math::", 6) == 0) {
+                    char math_func[512];
+                    snprintf(math_func, sizeof(math_func), "virex_math_%s", mangled_func_name + 6);
+                    strncpy(mangled_func_name, math_func, 511);
                 }
             }
             
-            // Specialized dispatch for generic print/println
-            if (found_name && (strcmp(mangled_func_name, "virex_print") == 0 || strcmp(mangled_func_name, "virex_println") == 0)) {
+            // Specialized dispatch for generic print
+            if (found_name && (strcmp(mangled_func_name, "virex_print") == 0)) {
                 if (expr->data.call.arg_count > 0) {
                     ASTExpr *arg0 = expr->data.call.arguments[0];
                     if (arg0->expr_type) {
@@ -514,12 +608,20 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
                             switch (t->data.primitive) {
                                 case TOKEN_I32: suffix = "_i32"; break;
                                 case TOKEN_I64: suffix = "_i64"; break;
+                                case TOKEN_F32: suffix = "_f64"; break; // Use f64 for both for now
+                                case TOKEN_F64: suffix = "_f64"; break;
                                 case TOKEN_BOOL: suffix = "_bool"; break;
                                 case TOKEN_CSTRING: suffix = "_str"; break;
                                 default: break;
                             }
                         } else if (t->kind == TYPE_ENUM) {
                             suffix = "_i32";
+                        } else if (t->kind == TYPE_SLICE) {
+                            // Check for []u8 (string slice)
+                            if (t->data.slice.element->kind == TYPE_PRIMITIVE && 
+                                t->data.slice.element->data.primitive == TOKEN_U8) {
+                                suffix = "_slice_uint8_t";
+                            }
                         }
                         if (suffix) {
                             strncat(mangled_func_name, suffix, 511 - strlen(mangled_func_name));
@@ -571,6 +673,93 @@ static IROperand *lower_expr(IRGenerator *gen, ASTExpr *expr) {
             return ir_operand_var(access);
         }
 
+
+        case AST_SLICE_EXPR: {
+            Type *arr_type = expr->data.slice.array->expr_type;
+            
+            // Array/Slice operand
+
+            IROperand *array_op = lower_expr(gen, expr->data.slice.array);
+            char base_str[256];
+            if (array_op->kind == IR_OP_VAR) snprintf(base_str, 256, "%s", array_op->data.var_name);
+            else if (array_op->kind == IR_OP_TEMP) snprintf(base_str, 256, "t%d", array_op->data.temp_id);
+            else snprintf(base_str, 256, "unknown");
+
+            // Start index
+            IROperand *start = expr->data.slice.start ? lower_expr(gen, expr->data.slice.start) : ir_operand_const(0);
+            
+            // End index
+            IROperand *end = NULL;
+            if (expr->data.slice.end) {
+                end = lower_expr(gen, expr->data.slice.end);
+            } else {
+                if (arr_type->kind == TYPE_ARRAY) {
+                    end = ir_operand_const(arr_type->data.array.size);
+                } else if (arr_type->kind == TYPE_SLICE) {
+                    char len_access[300];
+                    snprintf(len_access, 300, "%s.len", base_str);
+                    end = ir_operand_var(len_access);
+                }
+            }
+            
+            
+            // Bounds check
+            IROperand *capacity = NULL;
+            if (arr_type->kind == TYPE_ARRAY) {
+                capacity = ir_operand_const(arr_type->data.array.size);
+            } else if (arr_type->kind == TYPE_SLICE) {
+                char len_access[300];
+                snprintf(len_access, 300, "%s.len", base_str);
+                capacity = ir_operand_var(len_access);
+            }
+            
+            if (capacity) {
+                IROperand **args = malloc(sizeof(IROperand*) * 3);
+                args[0] = ir_operand_clone(start);
+                args[1] = ir_operand_clone(end);
+                args[2] = capacity;
+                emit(gen, ir_instruction_create_call(NULL, ir_operand_var("virex_slice_range_check"), args, 3));
+            }
+
+            // len = end - start
+            Type *i64_type = type_create_primitive(TOKEN_I64);
+            int len_temp = new_temp(gen, i64_type);
+            emit(gen, ir_instruction_create(IR_SUB, ir_operand_temp(len_temp), end, start));
+            
+            // ptr = base + start
+            Type *elem_type = arr_type->kind == TYPE_ARRAY ? arr_type->data.array.element : arr_type->data.slice.element;
+            Type *ptr_type = type_create_pointer(type_clone(elem_type), false);
+            
+            int ptr_temp = new_temp(gen, ptr_type);
+            
+            char data_source[300];
+            if (arr_type->kind == TYPE_SLICE) {
+                 snprintf(data_source, 300, "%s.data", base_str);
+            } else {
+                 strncpy(data_source, base_str, 300);
+            }
+            
+            // Clone start because it's used in IR_SUB above and ownership was transferred
+            emit(gen, ir_instruction_create(IR_ADD, ir_operand_temp(ptr_temp), ir_operand_var(data_source), ir_operand_clone(start)));
+            
+            // Result slice struct
+            int slice_temp = new_temp(gen, expr->expr_type);
+            
+            char data_field[64];
+            snprintf(data_field, 64, "t%d.data", slice_temp);
+            emit(gen, ir_instruction_create(IR_STORE, NULL, ir_operand_var(data_field), ir_operand_temp(ptr_temp)));
+            
+            char len_field[64];
+            snprintf(len_field, 64, "t%d.len", slice_temp);
+            emit(gen, ir_instruction_create(IR_STORE, NULL, ir_operand_var(len_field), ir_operand_temp(len_temp)));
+            
+            // Leak types to be safe
+            // type_free(i64_type); type_free(ptr_type);
+            
+            return ir_operand_temp(slice_temp);
+        }
+
+        
         default:
             return NULL;
     }

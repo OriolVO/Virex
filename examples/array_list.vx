@@ -53,7 +53,7 @@ func print_list(ArrayList list) {
         i = i + 1;
     }
     
-    io.println("]");
+    io.print("]"); io.print("\n");
 }
 
 // Check if the list is empty
@@ -62,17 +62,17 @@ func is_empty(ArrayList list) -> bool {
 }
 
 func main() -> i32 {
-    io.println("=== ArrayList Example ===");
-    io.println("");
+    io.print("=== ArrayList Example ==="); io.print("\n");
+    io.print(""); io.print("\n");
     
     // Create a new list
     var ArrayList my_list = create_list();
-    io.println("Created empty list");
+    io.print("Created empty list"); io.print("\n");
     print_list(my_list);
     
     // Add elements
-    io.println("");
-    io.println("Adding elements: 10, 20, 30, 40, 50");
+    io.print(""); io.print("\n");
+    io.print("Adding elements: 10, 20, 30, 40, 50"); io.print("\n");
     my_list = push(my_list, 10);
     my_list = push(my_list, 20);
     my_list = push(my_list, 30);
@@ -81,37 +81,37 @@ func main() -> i32 {
     print_list(my_list);
     
     // Get size
-    io.println("");
+    io.print(""); io.print("\n");
     io.print("List size: ");
-    io.println(my_list.size);
+    io.print(my_list.size); io.print("\n");
     
     // Access elements by index
-    io.println("");
-    io.println("Accessing elements by index:");
+    io.print(""); io.print("\n");
+    io.print("Accessing elements by index:"); io.print("\n");
     var i32 i = 0;
     while (i < my_list.size) {
         io.print("  Index ");
         io.print(i);
         io.print(": ");
-        io.println(get_at(my_list, i));
+        io.print(get_at(my_list, i)); io.print("\n");
         i = i + 1;
     }
     
     // Modify an element directly
-    io.println("");
-    io.println("Setting index 2 to 99");
+    io.print(""); io.print("\n");
+    io.print("Setting index 2 to 99"); io.print("\n");
     my_list.data[2] = 99;
     print_list(my_list);
     
     // Check if empty
-    io.println("");
+    io.print(""); io.print("\n");
     if (is_empty(my_list)) {
-        io.println("List is empty");
+        io.print("List is empty"); io.print("\n");
     } else {
-        io.println("List is not empty");
+        io.print("List is not empty"); io.print("\n");
     }
     
-    io.println("");
-    io.println("=== Example Complete ===");
+    io.print(""); io.print("\n");
+    io.print("=== Example Complete ==="); io.print("\n");
     return 0;
 }

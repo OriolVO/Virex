@@ -7,9 +7,14 @@
 MonomorphContext *monomorph_create(ASTProgram *program) {
     MonomorphContext *ctx = malloc(sizeof(MonomorphContext));
     ctx->program = program;
-    ctx->instantiated_functions = NULL;
+    ctx->instantiated_functions = malloc(sizeof(ASTDecl*) * 8);
     ctx->instantiated_count = 0;
-    ctx->instantiated_capacity = 0;
+    ctx->instantiated_capacity = 8;
+    
+    ctx->instantiated_types = malloc(sizeof(ASTDecl*) * 8);
+    ctx->instantiated_types_count = 0;
+    ctx->instantiated_types_capacity = 8;
+    
     return ctx;
 }
 
@@ -17,12 +22,20 @@ void monomorph_free(MonomorphContext *ctx) {
     if (!ctx) return;
     // Note: Don't free instantiated_functions as they're now part of the program
     free(ctx->instantiated_functions);
+    free(ctx->instantiated_types);
     free(ctx);
 }
 
 bool is_generic_function(ASTDecl *decl) {
     if (!decl || decl->type != AST_FUNCTION_DECL) return false;
     return decl->data.function.type_param_count > 0;
+}
+
+bool is_generic_type(ASTDecl *decl) {
+    if (!decl) return false;
+    if (decl->type == AST_STRUCT_DECL) return decl->data.struct_decl.type_param_count > 0;
+    if (decl->type == AST_ENUM_DECL) return decl->data.enum_decl.type_param_count > 0;
+    return false;
 }
 
 // Helper: Create mangled name for instantiated function
@@ -53,9 +66,9 @@ static Type *substitute_type(Type *original, char **type_params, size_t param_co
     if (!original) return NULL;
     
     // Check if this is a type parameter
-    if (original->kind == TYPE_STRUCT) {
+    if (original->kind == TYPE_STRUCT || original->kind == TYPE_ENUM) {
         for (size_t i = 0; i < param_count; i++) {
-            if (strcmp(original->data.name, type_params[i]) == 0) {
+            if (strcmp(original->data.struct_enum.name, type_params[i]) == 0) {
                 // This is a type parameter - substitute it
                 return concrete_types[i];
             }

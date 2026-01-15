@@ -1,0 +1,25 @@
+import "io.vx";
+
+func main() -> i32 {
+    var [5]i32 arr;
+    arr[0] = 10;
+    arr[1] = 20;
+    arr[2] = 30;
+    arr[3] = 40;
+    arr[4] = 50;
+    
+    var []i32 slice = arr[0..5];
+    
+    io.print("Iterating slice:\n");
+    for (var i32 x in slice) {
+        io.print(x);
+        io.print("\n");
+        
+        if (x == 30) {
+            io.print("Found 30, breaking\n");
+            break;
+        }
+    }
+    
+    return 0;
+}

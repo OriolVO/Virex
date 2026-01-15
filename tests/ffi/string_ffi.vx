@@ -6,38 +6,38 @@ extern func strlen(cstring s) -> i32;
 extern func strcmp(cstring s1, cstring s2) -> i32;
 
 func main() -> i32 {
-    var cstring s1 = "hello";
-    var cstring s2 = "world";
-    var cstring s3 = "hello";
+    var cstring s1 = cast<cstring>("hello");
+    var cstring s2 = cast<cstring>("world");
+    var cstring s3 = cast<cstring>("hello");
 
-    io.println("Testing string FFI (strlen/strcmp):");
+    io.print("Testing string FFI (strlen/strcmp):"); io.print("\n");
 
     var i32 len1 = 0;
     unsafe {
         len1 = strlen(s1);
     }
     io.print("Length of 'hello': ");
-    io.println(len1);
+    io.print(len1); io.print("\n");
 
     var i32 cmp1 = 0;
     unsafe {
         cmp1 = strcmp(s1, s2);
     }
     io.print("strcmp('hello', 'world'): ");
-    io.println(cmp1);
+    io.print(cmp1); io.print("\n");
 
     var i32 cmp2 = 0;
     unsafe {
         cmp2 = strcmp(s1, s3);
     }
     io.print("strcmp('hello', 'hello'): ");
-    io.println(cmp2);
+    io.print(cmp2); io.print("\n");
 
     if (len1 == 5 && cmp1 != 0 && cmp2 == 0) {
-        io.println("String FFI tests passed!");
+        io.print("String FFI tests passed!"); io.print("\n");
         return 0;
     } else {
-        io.println("String FFI tests failed!");
+        io.print("String FFI tests failed!"); io.print("\n");
         return 1;
     }
 }

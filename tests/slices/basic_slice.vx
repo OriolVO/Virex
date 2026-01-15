@@ -1,0 +1,16 @@
+import "io.vx";
+
+func test_slice_types() -> i32 {
+    // Test slice type declarations
+    var []i32 nums;
+    var []u8 bytes;
+    
+    io.print("Slice types parsed successfully!");
+    io.print("\n");
+    
+    return 0;
+}
+
+func main() -> i32 {
+    return test_slice_types();
+}

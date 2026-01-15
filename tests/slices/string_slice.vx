@@ -1,0 +1,16 @@
+import "io.vx";
+
+func main() -> i32 {
+    var []u8 s = "Hello Slices";
+    io.print(s);
+    io.print("\nLen: ");
+    io.print(s.len);
+    io.print("\n");
+    
+    // Verify indexing
+    if (s[0] == 72) { // 'H'
+        io.print("Starts with H\n");
+    }
+    
+    return 0;
+}

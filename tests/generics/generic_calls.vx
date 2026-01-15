@@ -5,13 +5,13 @@ func identity<T>(T x) -> T {
 }
 
 func main() -> i32 {
-    io.println("Testing Generics:");
+    io.print("Testing Generics:"); io.print("\n");
     
     // Testing generic identity with different types
     // Note: Implicit generic calls might be limited, testing based on current capability
     var i32 a = identity<i32>(42);
-    io.println(a);
+    io.print(a); io.print("\n");
     
-    io.println("Generic declaration verified.");
+    io.print("Generic declaration verified."); io.print("\n");
     return 0;
 }

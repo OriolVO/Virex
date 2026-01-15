@@ -30,6 +30,8 @@ typedef enum {
     TOKEN_PACKED,
     TOKEN_FAIL,
     TOKEN_NULL,
+    TOKEN_IN,
+    TOKEN_CAST,
     
     // Primitive types
     TOKEN_I8,
@@ -91,6 +93,7 @@ typedef enum {
     TOKEN_DOT,          // .
     TOKEN_COLON,        // :
     TOKEN_COLON_COLON,  // ::
+    TOKEN_DOT_DOT,      // ..
     TOKEN_ELLIPSIS,     // ...
     
     // Literals

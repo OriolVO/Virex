@@ -3,9 +3,9 @@ module "test_helper";
 import "io.vx";
 
 public func public_func() -> void {
-    io.println("Inside public_func");
+    io.print("Inside public_func"); io.print("\n");
 }
 
 func private_func() -> void {
-    io.println("Inside private_func (should not be callable)");
+    io.print("Inside private_func (should not be callable)"); io.print("\n");
 }

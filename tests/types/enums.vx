@@ -7,24 +7,24 @@ enum Color {
 };
 
 func main() -> i32 {
-    io.println("Testing Enums:");
+    io.print("Testing Enums:"); io.print("\n");
     
     var Color c = Green;
     
     if (c == Green) {
-        io.println("Initially Green");
-        io.print("Value: "); io.println(c);
+        io.print("Initially Green"); io.print("\n");
+        io.print("Value: "); io.print(c); io.print("\n");
     } else {
-        io.println("Error: Should be Green");
+        io.print("Error: Should be Green"); io.print("\n");
         return 1;
     }
     
     c = Red;
     if (c == Red) {
-        io.println("Now Red");
-        io.print("Value: "); io.println(c);
+        io.print("Now Red"); io.print("\n");
+        io.print("Value: "); io.print(c); io.print("\n");
     } else {
-        io.println("Error: Should be Red");
+        io.print("Error: Should be Red"); io.print("\n");
         return 1;
     }
     

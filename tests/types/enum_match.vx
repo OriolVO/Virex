@@ -10,7 +10,7 @@ enum Color {
 };
 
 func main() -> i32 {
-    io.println("Testing enum matching...");
+    io.print("Testing enum matching..."); io.print("\n");
 
     var Color c = Red;
     var i32 val = 0;
@@ -28,7 +28,7 @@ func main() -> i32 {
     }
 
     if (val != 1) {
-        io.println("FAIL: Red should match val=1");
+        io.print("FAIL: Red should match val=1"); io.print("\n");
         return 1;
     }
 
@@ -39,10 +39,10 @@ func main() -> i32 {
     }
     
     if (val != 20) {
-        io.println("FAIL: Wildcard should match Green");
+        io.print("FAIL: Wildcard should match Green"); io.print("\n");
         return 1;
     }
 
-    io.println("PASS: Enum match works");
+    io.print("PASS: Enum match works"); io.print("\n");
     return 0;
 }

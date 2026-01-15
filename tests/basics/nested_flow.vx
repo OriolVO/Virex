@@ -6,7 +6,7 @@ import "io.vx" as io;
 extern func exit(i32 code) -> void;
 
 func main() -> i32 {
-    io.println("Running nested flow tests...");
+    io.print("Running nested flow tests..."); io.print("\n");
 
     // 1. Deeply nested IF
     var i32 i = 0;
@@ -36,7 +36,7 @@ func main() -> i32 {
     
     // i should be 7
     if (i != 7) {
-        io.println("FAIL: Nested IF failed");
+        io.print("FAIL: Nested IF failed"); io.print("\n");
         exit(1);
     }
     
@@ -58,7 +58,7 @@ func main() -> i32 {
     
     // 5 * 5 * 5 = 125
     if (sum != 125) {
-        io.println("FAIL: Nested While loop failed");
+        io.print("FAIL: Nested While loop failed"); io.print("\n");
         exit(1);
     }
     
@@ -93,10 +93,10 @@ func main() -> i32 {
     }
     
     if (found != 21) {
-        io.println("FAIL: Nested break/continue failed");
+        io.print("FAIL: Nested break/continue failed"); io.print("\n");
         exit(1);
     }
     
-    io.println("PASS: Nested flow tests passed");
+    io.print("PASS: Nested flow tests passed"); io.print("\n");
     return 0;
 }

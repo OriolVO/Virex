@@ -36,7 +36,7 @@ func main() -> i32 {
     }
     
     if (size_check != 1) {
-        io.println("FAIL: Struct size is not 6 bytes (packed attribute failed)");
+        io.print("FAIL: Struct size is not 6 bytes (packed attribute failed)"); io.print("\n");
         exit(1);
     }
     
@@ -47,10 +47,10 @@ func main() -> i32 {
     }
     
     if (val_check != 1) {
-        io.println("FAIL: Packed struct verification failed in C");
+        io.print("FAIL: Packed struct verification failed in C"); io.print("\n");
         exit(1);
     }
     
-    io.println("PASS: Packed struct test passed");
+    io.print("PASS: Packed struct test passed"); io.print("\n");
     return 0; // ffi_structs.vx returns from main
 }

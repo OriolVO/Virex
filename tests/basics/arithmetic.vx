@@ -1,16 +1,16 @@
 import "io.vx";
 
 func main() -> i32 {
-    io.println("Testing Arithmetic:");
+    io.print("Testing Arithmetic:"); io.print("\n");
     
     var i32 a = 10;
     var i32 b = 3;
     
-    io.print("10 + 3 = "); io.println(a + b);
-    io.print("10 - 3 = "); io.println(a - b);
-    io.print("10 * 3 = "); io.println(a * b);
-    io.print("10 / 3 = "); io.println(a / b);
-    io.print("10 % 3 = "); io.println(a % b);
+    io.print("10 + 3 = "); io.print(a + b); io.print("\n");
+    io.print("10 - 3 = "); io.print(a - b); io.print("\n");
+    io.print("10 * 3 = "); io.print(a * b); io.print("\n");
+    io.print("10 / 3 = "); io.print(a / b); io.print("\n");
+    io.print("10 % 3 = "); io.print(a % b); io.print("\n");
     
     return 0;
 }

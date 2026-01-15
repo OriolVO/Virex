@@ -1,0 +1,12 @@
+module "std::math";
+
+public extern func sqrt(f64 x) -> f64;
+public extern func pow(f64 x, f64 y) -> f64;
+public extern func sin(f64 x) -> f64;
+public extern func cos(f64 x) -> f64;
+public extern func tan(f64 x) -> f64;
+public extern func log(f64 x) -> f64;
+public extern func exp(f64 x) -> f64;
+public extern func fabs(f64 x) -> f64;
+public extern func floor(f64 x) -> f64;
+public extern func ceil(f64 x) -> f64;

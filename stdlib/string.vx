@@ -1,0 +1,61 @@
+module "std::string";
+
+import "mem.vx" as mem;
+
+public struct String {
+    []u8 bytes;
+};
+
+public func from_bytes([]u8 bytes) -> String {
+    var String s;
+    s.bytes = bytes;
+    return s;
+}
+
+public func len(String s) -> i64 {
+    return s.bytes.len;
+}
+
+public func concat(String a, String b) -> String {
+    var i64 new_len = a.bytes.len + b.bytes.len;
+    var u8* ptr;
+    unsafe {
+        ptr = mem.alloc<u8>(new_len);
+        mem.copy<u8>(ptr, a.bytes.data, a.bytes.len);
+        mem.copy<u8>(ptr + a.bytes.len, b.bytes.data, b.bytes.len);
+    }
+    
+    var []u8 new_slice;
+    new_slice.data = ptr;
+    new_slice.len = new_len;
+    
+    return from_bytes(new_slice);
+}
+
+// Convert slice to C string (null-terminated)
+public func to_cstring(String s) -> cstring {
+    var i64 len = s.bytes.len;
+    var u8* ptr;
+    unsafe {
+        ptr = mem.alloc<u8>(len + 1);
+        mem.copy<u8>(ptr, s.bytes.data, len);
+        ptr[len] = 0; // null terminator
+    }
+    
+    return cast<cstring>(ptr);
+}
+
+// Slice substring
+public func slice(String s, i64 start, i64 end) -> String {
+    return from_bytes(s.bytes[start..end]);
+}
+
+// Equality
+public func equals(String a, String b) -> bool {
+    if (a.bytes.len != b.bytes.len) { return false; }
+    
+    for (var i64 i = 0; i < a.bytes.len; i = i + 1) {
+        if (a.bytes[i] != b.bytes[i]) { return false; }
+    }
+    return true;
+}

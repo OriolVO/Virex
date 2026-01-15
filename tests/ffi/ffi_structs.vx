@@ -15,27 +15,27 @@ func main() -> i32 {
     p.x = 10;
     p.y = 20;
     
-    io.println("Virex calling C print_point:");
+    io.print("Virex calling C print_point:"); io.print("\n");
     unsafe {
         print_point(p);
     }
     
-    io.println("Virex calling C offset_point:");
+    io.print("Virex calling C offset_point:"); io.print("\n");
     var Point p2;
     unsafe {
         p2 = offset_point(p, 5, 5);
     }
     
     io.print("p2.x: ");
-    io.println(p2.x);
+    io.print(p2.x); io.print("\n");
     io.print("p2.y: ");
-    io.println(p2.y);
+    io.print(p2.y); io.print("\n");
     
     if (p2.x == 15 && p2.y == 25) {
-        io.println("FFI structs test passed!");
+        io.print("FFI structs test passed!"); io.print("\n");
         return 0;
     }
     
-    io.println("FFI structs test failed!");
+    io.print("FFI structs test failed!"); io.print("\n");
     return 1;
 }

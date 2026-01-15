@@ -72,7 +72,7 @@ for test in $TEST_FILES; do
         PASSED=$((PASSED + 1))
     else
         # Check if it was supposed to fail at runtime
-        if [[ "$test_name" == "fail.vx" ]] || [[ "$test_name" == "unwrap_test.vx" ]]; then
+        if [[ "$test_name" == "fail.vx" ]] || [[ "$test_name" == "unwrap_test.vx" ]] || [[ "$test_name" == "bounds_fail.vx" ]] || [[ "$test_name" == "slice_fail.vx" ]]; then
              echo -e "${GREEN}PASSED${NC} (Expected runtime failure)"
              PASSED=$((PASSED + 1))
         else

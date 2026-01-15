@@ -1,12 +1,12 @@
 import "io.vx";
 
 func main() -> i32 {
-    io.println("Testing Smart Print Dispatch:");
+    io.print("Testing Smart Print Dispatch:"); io.print("\n");
     
-    io.println(100);
-    io.println("String works");
-    io.println(true);
-    io.println(false);
+    io.print(100); io.print("\n");
+    io.print("String works"); io.print("\n");
+    io.print(true); io.print("\n");
+    io.print(false); io.print("\n");
     
     return 0;
 }

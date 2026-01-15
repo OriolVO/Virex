@@ -1,0 +1,80 @@
+import "io.vx";
+
+// Test 1: Basic slice declarations
+func test_declarations() -> i32 {
+    var []i32 nums;
+    var []u8 bytes;
+    var []bool flags;
+    
+    io.print("✓ Slice declarations work");
+    io.print("\n");
+    return 0;
+}
+
+// Test 2: Nested slices
+func test_nested() -> i32 {
+    var [][]i32 matrix;
+    var [][]u8 byte_matrix;
+    
+    io.print("✓ Nested slices work");
+    io.print("\n");
+    return 0;
+}
+
+// Test 3: Slices in structs
+struct Container {
+    []i32 numbers;
+    []u8 data;
+    i32 count;
+};
+
+func test_in_structs() -> i32 {
+    var Container c;
+    
+    io.print("✓ Slices in structs work");
+    io.print("\n");
+    return 0;
+}
+
+// Test 4: Slice function parameters
+func process_slice([]i32 nums) -> i32 {
+    return 0;
+}
+
+func test_parameters() -> i32 {
+    var []i32 data;
+    var i32 res = process_slice(data);
+    
+    io.print("✓ Slice parameters work");
+    io.print("\n");
+    return res;
+}
+
+// Test 5: Slice return types
+func get_slice() -> []i32 {
+    var []i32 res;
+    return res;
+}
+
+func test_returns() -> i32 {
+    var []i32 data = get_slice();
+    
+    io.print("✓ Slice returns work");
+    io.print("\n");
+    return 0;
+}
+
+func main() -> i32 {
+    io.print("=== Slice Type Tests ===");
+    io.print("\n");
+    
+    test_declarations();
+    test_nested();
+    test_in_structs();
+    test_parameters();
+    test_returns();
+    
+    io.print("=== All Tests Passed ===");
+    io.print("\n");
+    return 0;
+}

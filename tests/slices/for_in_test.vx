@@ -1,0 +1,11 @@
+func main() -> i32 {
+    var []u8 bytes = "Hello";
+    var i32 count = 0;
+    
+    for (var u8 b in bytes) {
+        count = count + 1;
+    }
+    
+    if (count != 5) return 1;
+    return 0;
+}

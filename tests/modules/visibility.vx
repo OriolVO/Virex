@@ -6,6 +6,6 @@ import "io.vx" as io;
 func main() -> i32 {
     // This should fail because private_sub is not public
     var i32 diff = math.private_sub(20, 10);
-    io.println(diff);
+    io.print(diff); io.print("\n");
     return 0;
 }

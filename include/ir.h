@@ -46,6 +46,7 @@ typedef enum {
     IR_NEG,         // Unary negation
     IR_ADDR,        // Address of (&)
     IR_DEREF,       // Dereference (*)
+    IR_CAST,        // Explicit cast
     IR_NOP          // No Operation
 } IROpcode;
 
@@ -55,7 +56,8 @@ typedef enum {
     IR_OP_CONST,     // Constant value
     IR_OP_VAR,       // Named variable
     IR_OP_LABEL,     // Jump label
-    IR_OP_STRING     // String literal
+    IR_OP_STRING,    // String literal
+    IR_OP_FLOAT      // Floating point constant
 } IROperandKind;
 
 // IR Operand
@@ -64,6 +66,7 @@ typedef struct {
     union {
         int temp_id;
         long const_value;
+        double float_value;
         char *var_name;
         char *label_name;
         char *string_value;
@@ -118,6 +121,7 @@ typedef struct {
 // IR Operand creation
 IROperand *ir_operand_temp(int temp_id);
 IROperand *ir_operand_const(long value);
+IROperand *ir_operand_float(double value);
 IROperand *ir_operand_var(const char *name);
 IROperand *ir_operand_label(const char *name);
 IROperand *ir_operand_string(const char *value);

@@ -27,18 +27,18 @@ func main() -> i32 {
     io.print("Rect pos: ");
     io.print(r.pos.x);
     io.print(", ");
-    io.println(r.pos.y);
+    io.print(r.pos.y); io.print("\n");
 
     io.print("Rect size: ");
     io.print(r.size.x);
     io.print(", ");
-    io.println(r.size.y);
+    io.print(r.size.y); io.print("\n");
 
     // Test pointers and nested access
     var Rect* pr = &r;
     io.print("Pointer access r.pos.x: ");
     unsafe {
-        io.println(pr->pos.x);
+        io.print(pr->pos.x); io.print("\n");
     }
 
     // Test self-referential struct (Node)
@@ -50,21 +50,21 @@ func main() -> i32 {
     n2.next = null;
 
     io.print("Node 1 val: ");
-    io.println(n1.val);
+    io.print(n1.val); io.print("\n");
     io.print("Node 2 val (via n1->next): ");
     unsafe {
-        io.println(n1.next->val);
+        io.print(n1.next->val); io.print("\n");
     }
 
     if (r.pos.x == 10 && r.size.y == 200 && n1.val == 1) {
         unsafe {
             if (n1.next->val == 2) {
-                io.println("Nested structs and pointers test passed!");
+                io.print("Nested structs and pointers test passed!"); io.print("\n");
                 return 0;
             }
         }
     }
 
-    io.println("Nested structs and pointers test failed!");
+    io.print("Nested structs and pointers test failed!"); io.print("\n");
     return 1;
 }

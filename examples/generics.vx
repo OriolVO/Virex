@@ -1,6 +1,4 @@
-// Generic utility functions example
-
-extern func println_i32(i32 val) -> void;
+import "io.vx";
 
 // Generic max function
 func max<T>(T a, T b) -> T {
@@ -30,11 +28,11 @@ func swap<T>(T* a, T* b) -> void {
 func main() -> i32 {
     // Test with integers
     var i32 x = max<i32>(10, 20);
-    println_i32(x);  // Should print 20
+    io.print(x); io.print("\n"); // Should print 20
     
     // Test with different type
     var i32 y = min<i32>(5, 3);
-    println_i32(y);  // Should print 3
+    io.print(y); io.print("\n"); // Should print 3
     
     return 0;
 }

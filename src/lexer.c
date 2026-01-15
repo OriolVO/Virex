@@ -34,6 +34,7 @@ static const KeywordEntry keywords[] = {
     {"match", TOKEN_MATCH},
     {"fail", TOKEN_FAIL},
     {"null", TOKEN_NULL},
+    {"in", TOKEN_IN},
     {"result", TOKEN_RESULT},
     {"packed", TOKEN_PACKED},
     {"true", TOKEN_TRUE},
@@ -63,6 +64,7 @@ static const KeywordEntry keywords[] = {
     {"c_ulonglong", TOKEN_C_ULONGLONG},
     {"c_longdouble", TOKEN_C_LONGDOUBLE},
     {"cstring", TOKEN_CSTRING},
+    {"cast", TOKEN_CAST},
     {NULL, TOKEN_EOF} // Sentinel
 };
 
@@ -480,12 +482,12 @@ Token *lexer_next_token(Lexer *lexer) {
             }
             return lexer_make_token(lexer, TOKEN_COLON, ":", start_line, start_column);
             
-        case '.': 
+        case '.':
             if (lexer_match(lexer, '.')) {
                if (lexer_match(lexer, '.')) {
                    return lexer_make_token(lexer, TOKEN_ELLIPSIS, "...", start_line, start_column);
                }
-               return lexer_error_token(lexer, "unexpected '..'");
+               return lexer_make_token(lexer, TOKEN_DOT_DOT, "..", start_line, start_column);
             }
             return lexer_make_token(lexer, TOKEN_DOT, ".", start_line, start_column);
         

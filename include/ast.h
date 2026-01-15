@@ -21,7 +21,9 @@ typedef enum {
     AST_UNARY_EXPR,
     AST_CALL_EXPR,
     AST_INDEX_EXPR,
+    AST_SLICE_EXPR,
     AST_MEMBER_EXPR,
+    AST_CAST_EXPR,
     
     // Statements
     AST_EXPR_STMT,
@@ -92,12 +94,24 @@ typedef struct {
     ASTExpr *index;
 } ASTIndexExpr;
 
+// Slice expression (array[start..end])
+typedef struct {
+    ASTExpr *array;
+    ASTExpr *start;
+    ASTExpr *end;
+} ASTSliceExpr;
+
 // Member expression (struct.field or ptr->field)
 typedef struct {
     ASTExpr *object;
     char *member;
     bool is_arrow;  // true for ->, false for .
 } ASTMemberExpr;
+
+typedef struct {
+    Type *target_type;
+    ASTExpr *expr;
+} ASTCastExpr;
 
 // Expression node
 struct ASTExpr {
@@ -112,7 +126,9 @@ struct ASTExpr {
         ASTUnaryExpr unary;
         ASTCallExpr call;
         ASTIndexExpr index;
+        ASTSliceExpr slice;
         ASTMemberExpr member;
+        ASTCastExpr cast;
     } data;
 };
 
@@ -243,6 +259,8 @@ typedef struct {
 // Struct declaration
 typedef struct {
     char *name;
+    char **type_params;
+    size_t type_param_count;
     ASTField *fields;
     size_t field_count;
     bool is_public;
@@ -257,6 +275,8 @@ typedef struct {
 // Enum declaration
 typedef struct {
     char *name;
+    char **type_params;
+    size_t type_param_count;
     ASTEnumVariant *variants;
     size_t variant_count;
     bool is_public;
@@ -326,7 +346,9 @@ ASTExpr *ast_create_binary(TokenType op, ASTExpr *left, ASTExpr *right, size_t l
 ASTExpr *ast_create_unary(TokenType op, ASTExpr *operand, size_t line, size_t column);
 ASTExpr *ast_create_call(ASTExpr *callee, ASTExpr **args, size_t arg_count, Type **generic_args, size_t generic_count, size_t line, size_t column);
 ASTExpr *ast_create_index(ASTExpr *array, ASTExpr *index, size_t line, size_t column);
+ASTExpr *ast_create_slice_expr(ASTExpr *array, ASTExpr *start, ASTExpr *end, size_t line, size_t column);
 ASTExpr *ast_create_member(ASTExpr *object, const char *member, bool is_arrow, size_t line, size_t column);
+ASTExpr *ast_create_cast(Type *target_type, ASTExpr *expr, size_t line, size_t column);
 
 ASTStmt *ast_create_expr_stmt(ASTExpr *expr, size_t line, size_t column);
 ASTStmt *ast_create_var_decl(bool is_const, Type *type, const char *name, ASTExpr *init, size_t line, size_t column);
@@ -342,8 +364,8 @@ ASTStmt *ast_create_break(size_t line, size_t column);
 ASTStmt *ast_create_continue(size_t line, size_t column);
 
 ASTDecl *ast_create_function(const char *name, char **type_params, size_t type_param_count, ASTParam *params, size_t param_count, Type *ret_type, ASTStmt *body, bool is_public, bool is_extern, bool is_variadic, size_t line, size_t column);
-ASTDecl *ast_create_struct(const char *name, ASTField *fields, size_t field_count, bool is_public, bool is_packed, size_t line, size_t column);
-ASTDecl *ast_create_enum(const char *name, ASTEnumVariant *variants, size_t variant_count, bool is_public, size_t line, size_t column);
+ASTDecl *ast_create_struct(const char *name, char **type_params, size_t type_param_count, ASTField *fields, size_t field_count, bool is_public, bool is_packed, size_t line, size_t column);
+ASTDecl *ast_create_enum(const char *name, char **type_params, size_t type_param_count, ASTEnumVariant *variants, size_t variant_count, bool is_public, size_t line, size_t column);
 ASTDecl *ast_create_module(const char *module_name, size_t line, size_t column);
 ASTDecl *ast_create_import(const char *import_path, const char *alias, size_t line, size_t column);
 ASTDecl *ast_create_variable_decl(const char *name, Type *type, ASTExpr *initializer, bool is_const, bool is_public, size_t line, size_t column);

@@ -30,6 +30,7 @@ typedef struct Symbol {
     bool is_const;
     bool is_initialized;
     bool is_public;
+    bool is_packed;
     bool is_extern;             // Whether it's an extern declaration
     size_t line;
     size_t column;

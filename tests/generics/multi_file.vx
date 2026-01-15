@@ -5,13 +5,13 @@ import "lib.vx" as lib;
 import "io.vx" as io;
 
 func main() -> i32 {
-    io.println("Testing multi-file generics...");
+    io.print("Testing multi-file generics..."); io.print("\n");
 
     var i32 x = 10;
     var i32 y = lib.identity<i32>(x);
     
     if (x != y) {
-        io.println("FAIL: identity mismatch");
+        io.print("FAIL: identity mismatch"); io.print("\n");
         return 1;
     }
     
@@ -19,10 +19,10 @@ func main() -> i32 {
     var i64 w = lib.identity<i64>(z);
     
     if (z != w) {
-        io.println("FAIL: identity i64 mismatch");
+        io.print("FAIL: identity i64 mismatch"); io.print("\n");
         return 1;
     }
     
-    io.println("PASS: Multi-file generics work");
+    io.print("PASS: Multi-file generics work"); io.print("\n");
     return 0;
 }

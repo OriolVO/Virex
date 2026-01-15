@@ -16,6 +16,8 @@ struct CodeGenerator {
 // Forward declarations
 static char *type_to_c_string(Type *type);
 static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction *instr);
+static void collect_slice_types(Type *type, Type ***slice_types, size_t *count, size_t *capacity);
+static void emit_slice_struct(FILE *output, Type *slice_type);
 static void gen_for_loop(CodeGenerator *gen, IRFunction *func, LoopInfo *info);
 
 CodeGenerator *codegen_create(void) {
@@ -53,6 +55,17 @@ static void print_indent(CodeGenerator *gen) {
     }
 }
 
+// Helper: Print a C declaration, handling array suffixes correctly
+static void print_decl(FILE *output, const char *type_str, const char *name) {
+    const char *bracket = strchr(type_str, '[');
+    if (bracket) {
+        int type_len = bracket - type_str;
+        fprintf(output, "%.*s %s%s", type_len, type_str, name, bracket);
+    } else {
+        fprintf(output, "%s %s", type_str, name);
+    }
+}
+
 // Helper: Generate operand
 static void gen_operand(CodeGenerator *gen, IROperand *op) {
     if (!op) {
@@ -68,7 +81,9 @@ static void gen_operand(CodeGenerator *gen, IROperand *op) {
             fprintf(gen->output, "%ld", op->data.const_value);
             break;
         case IR_OP_STRING:
+            fprintf(gen->output, "(struct Slice_uint8_t){ .data = (uint8_t*)");
             print_escaped_string(gen->output, op->data.string_value);
+            fprintf(gen->output, ", .len = %zu }", strlen(op->data.string_value));
             break;
         case IR_OP_VAR:
             fprintf(gen->output, "%s", op->data.var_name);
@@ -76,34 +91,48 @@ static void gen_operand(CodeGenerator *gen, IROperand *op) {
         case IR_OP_LABEL:
             fprintf(gen->output, "%s", op->data.label_name);
             break;
+        case IR_OP_FLOAT:
+            fprintf(gen->output, "%g", op->data.float_value);
+            break;
     }
 }
 
+// Helper: Get operand type string
+static char *get_op_type(CodeGenerator *gen, IROperand *op, IRFunction *func) {
+    if (!op) return NULL;
+    if (op->kind == IR_OP_TEMP) {
+        if (func && (size_t)op->data.temp_id < func->temp_count && func->temp_types) {
+            return func->temp_types[op->data.temp_id];
+        }
+    }
+    if (op->kind == IR_OP_VAR) {
+        if (func) {
+            for (size_t i = 0; i < func->local_var_count; i++) {
+                if (strcmp(op->data.var_name, func->local_vars[i]) == 0) {
+                    return func->local_var_types[i];
+                }
+            }
+            for (size_t i = 0; i < func->param_count; i++) {
+                if (strcmp(op->data.var_name, func->params[i]) == 0) {
+                    return func->param_types[i];
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
 // Helper: Get destination type string
-static char *get_dest_type(IROperand *dest, IRFunction *func) {
-    if (!dest) return strdup("long");
-    if (dest->kind == IR_OP_TEMP && func) {
-        if ((size_t)dest->data.temp_id < func->temp_count && func->temp_types && func->temp_types[dest->data.temp_id]) {
-            return strdup(func->temp_types[dest->data.temp_id]);
-        }
-    }
-    if (dest->kind == IR_OP_VAR && func) {
-        for (size_t i = 0; i < func->local_var_count; i++) {
-            if (strcmp(dest->data.var_name, func->local_vars[i]) == 0) {
-                return strdup(func->local_var_types[i]);
-            }
-        }
-        for (size_t i = 0; i < func->param_count; i++) {
-            if (strcmp(dest->data.var_name, func->params[i]) == 0) {
-                return strdup(func->param_types[i]);
-            }
-        }
-    }
+static char *get_dest_type(CodeGenerator *gen, IROperand *dest, IRFunction *func) {
+    char *type = get_op_type(gen, dest, func);
+    if (type) return strdup(type);
     return strdup("long");
 }
 
 static ASTDecl *find_function_decl(Project *project, const char *name) {
-    if (!project) return NULL;
+    if (!project || !name) return NULL;
+    
+    // 1. Try exact match
     for (size_t m_idx = 0; m_idx < project->module_count; m_idx++) {
         Module *m = project->modules[m_idx];
         if (!m->ast) continue;
@@ -114,6 +143,32 @@ static ASTDecl *find_function_decl(Project *project, const char *name) {
             }
         }
     }
+    
+    // 2. Try handling mangled names (Module__Function)
+    char *dup = strdup(name);
+    char *sep = strstr(dup, "__");
+    if (sep) {
+        *sep = '\0';
+        char *mod_name = dup;
+        char *func_name = sep + 2;
+        
+        for (size_t m_idx = 0; m_idx < project->module_count; m_idx++) {
+            Module *m = project->modules[m_idx];
+            // Check if module name matches (might need sanitization check)
+            if (m->name && strcmp(m->name, mod_name) == 0) {
+                if (m->ast) {
+                    for (size_t i = 0; i < m->ast->decl_count; i++) {
+                        ASTDecl *decl = m->ast->declarations[i];
+                        if (decl->type == AST_FUNCTION_DECL && strcmp(decl->data.function.name, func_name) == 0) {
+                            free(dup);
+                            return decl;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    free(dup);
     return NULL;
 }
 
@@ -135,7 +190,7 @@ static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction 
     
     switch (instr->opcode) {
         case IR_ADD: {
-            char *d_type = get_dest_type(instr->dest, func);
+            char *d_type = get_dest_type(gen, instr->dest, func);
             gen_operand(gen, instr->dest);
             // Only cast to (long) if it's actually long
             if (strcmp(d_type, "long") == 0) {
@@ -274,7 +329,7 @@ static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction 
             break;
             
         case IR_ADDR: {
-            char *d_type = get_dest_type(instr->dest, func);
+            char *d_type = get_dest_type(gen, instr->dest, func);
             gen_operand(gen, instr->dest);
             fprintf(gen->output, " = (%s)&", d_type);
             gen_operand(gen, instr->src1);
@@ -284,11 +339,31 @@ static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction 
         }
             
         case IR_DEREF: {
-            char *d_type = get_dest_type(instr->dest, func);
+            char *d_type = get_dest_type(gen, instr->dest, func);
             gen_operand(gen, instr->dest);
             fprintf(gen->output, " = *(%s*)", d_type);
             gen_operand(gen, instr->src1);
             fprintf(gen->output, ";\n");
+            free(d_type);
+            break;
+        }
+
+        case IR_CAST: {
+            char *d_type = get_dest_type(gen, instr->dest, func);
+            char *s_type = get_op_type(gen, instr->src1, func);
+            bool src_is_slice = (instr->src1->kind == IR_OP_STRING) || (s_type && strstr(s_type, "Slice") != NULL);
+            bool dest_is_ptr = (strstr(d_type, "*") != NULL) || (strcmp(d_type, "const char*") == 0);
+
+            gen_operand(gen, instr->dest);
+            if (src_is_slice && dest_is_ptr) {
+                fprintf(gen->output, " = (%s)(", d_type);
+                gen_operand(gen, instr->src1);
+                fprintf(gen->output, ").data;\n");
+            } else {
+                fprintf(gen->output, " = (%s)", d_type);
+                gen_operand(gen, instr->src1);
+                fprintf(gen->output, ";\n");
+            }
             free(d_type);
             break;
         }
@@ -334,9 +409,18 @@ static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction 
             
         case IR_FAIL:
             if (instr->src1) {
-                fprintf(gen->output, "fprintf(stderr, \"Error: %%s\\n\", (char*)");
-                gen_operand(gen, instr->src1);
-                fprintf(gen->output, ");\n");
+                char *type = get_op_type(gen, instr->src1, func);
+                bool is_slice = (instr->src1->kind == IR_OP_STRING) || (type && strstr(type, "Slice") != NULL);
+                
+                if (is_slice) {
+                    fprintf(gen->output, "fprintf(stderr, \"Error: %%s\\n\", (char*)(");
+                    gen_operand(gen, instr->src1);
+                    fprintf(gen->output, ").data);\n");
+                } else {
+                    fprintf(gen->output, "fprintf(stderr, \"Error: %%s\\n\", (char*)");
+                    gen_operand(gen, instr->src1);
+                    fprintf(gen->output, ");\n");
+                }
             } else {
                 fprintf(gen->output, "fprintf(stderr, \"Error: program failure\\n\");\n");
             }
@@ -345,7 +429,7 @@ static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction 
             
         case IR_CALL: {
             if (instr->dest) {
-                char *d_type = get_dest_type(instr->dest, func);
+                char *d_type = get_dest_type(gen, instr->dest, func);
                 gen_operand(gen, instr->dest);
                 fprintf(gen->output, " = (%s)", d_type);
                 free(d_type);
@@ -365,11 +449,22 @@ static void gen_instruction(CodeGenerator *gen, IRFunction *func, IRInstruction 
                     
                     if (callee_decl && i < callee_decl->data.function.param_count) {
                         char *p_type = type_to_c_string(callee_decl->data.function.params[i].param_type);
-                        fprintf(gen->output, "(%s)", p_type);
+                        char *arg_type = get_op_type(gen, instr->args[i], func);
+                        bool is_ptr = (strstr(p_type, "*") != NULL);
+                        bool arg_is_slice = (instr->args[i]->kind == IR_OP_STRING) || (arg_type && strstr(arg_type, "Slice") != NULL);
+                        
+                        if (is_ptr && arg_is_slice) {
+                            fprintf(gen->output, "(%s)(", p_type);
+                            gen_operand(gen, instr->args[i]);
+                            fprintf(gen->output, ").data");
+                        } else {
+                            fprintf(gen->output, "(%s)", p_type);
+                            gen_operand(gen, instr->args[i]);
+                        }
                         free(p_type);
+                    } else {
+                        gen_operand(gen, instr->args[i]);
                     }
-                    
-                    gen_operand(gen, instr->args[i]);
                 }
             }
             fprintf(gen->output, ");\n");
@@ -408,9 +503,10 @@ static void gen_function(CodeGenerator *gen, IRFunction *func) {
             const char *type = func->param_types[i];
             // Add restrict keyword for pointer types
             if (strstr(type, "*") != NULL) {
+                // For pointers, it's easier to just print it
                 fprintf(gen->output, "%s restrict %s", type, func->params[i]);
             } else {
-                fprintf(gen->output, "%s %s", type, func->params[i]);
+                print_decl(gen->output, type, func->params[i]);
             }
         } else {
             fprintf(gen->output, "long %s", func->params[i]);
@@ -425,7 +521,10 @@ static void gen_function(CodeGenerator *gen, IRFunction *func) {
         for (size_t i = 0; i < func->temp_count; i++) {
             print_indent(gen);
             const char *type = (func->temp_types && func->temp_types[i]) ? func->temp_types[i] : "long";
-            fprintf(gen->output, "%s t%zu;\n", type, i);
+            char name[32];
+            snprintf(name, 32, "t%zu", i);
+            print_decl(gen->output, type, name);
+            fprintf(gen->output, ";\n");
         }
     }
     
@@ -434,7 +533,8 @@ static void gen_function(CodeGenerator *gen, IRFunction *func) {
         for (size_t i = 0; i < func->local_var_count; i++) {
              print_indent(gen);
              if (func->local_var_types && func->local_var_types[i]) {
-                 fprintf(gen->output, "%s %s;\n", func->local_var_types[i], func->local_vars[i]);
+                 print_decl(gen->output, func->local_var_types[i], func->local_vars[i]);
+                 fprintf(gen->output, ";\n");
              } else {
                  fprintf(gen->output, "long %s;\n", func->local_vars[i]);
              }
@@ -471,13 +571,13 @@ static char *type_to_c_string(Type *type) {
                 case TOKEN_U16: return strdup("uint16_t");
                 case TOKEN_I32: return strdup("int32_t");
                 case TOKEN_U32: return strdup("uint32_t");
-                case TOKEN_I64: return strdup("int64_t");
+                case TOKEN_I64: return strdup("long long");
                 case TOKEN_U64: return strdup("uint64_t");
                 case TOKEN_F32: return strdup("float");
                 case TOKEN_F64: return strdup("double");
                 case TOKEN_BOOL: return strdup("int");
                 case TOKEN_VOID: return strdup("void");
-                case TOKEN_CSTRING: return strdup("char*");
+                case TOKEN_CSTRING: return strdup("const char*");
                 default: return strdup("long");
             }
         case TYPE_POINTER: {
@@ -487,22 +587,111 @@ static char *type_to_c_string(Type *type) {
             free(base);
             return result;
         }
-        case TYPE_ARRAY:
-            return strdup("long*");  // Arrays decay to pointers
-        case TYPE_STRUCT: {
+        case TYPE_ARRAY: {
+            char *elem = type_to_c_string(type->data.array.element);
             char buf[256];
-            snprintf(buf, 256, "struct %s", type->data.name);
+            snprintf(buf, 256, "%s[%zu]", elem, type->data.array.size);
+            free(elem);
+            return strdup(buf);
+        }
+        case TYPE_SLICE: {
+            // Generate slice struct name: Slice_ElementType
+            char *elem_str = type_to_c_string(type->data.slice.element);
+            // Remove spaces and special chars from element type for struct name
+            char *clean_elem = malloc(strlen(elem_str) + 1);
+            size_t j = 0;
+            for (size_t i = 0; elem_str[i]; i++) {
+                if (elem_str[i] != ' ' && elem_str[i] != '*') {
+                    clean_elem[j++] = elem_str[i];
+                }
+            }
+            clean_elem[j] = '\0';
+            
+            char buf[256];
+            snprintf(buf, 256, "struct Slice_%s", clean_elem);
+            free(elem_str);
+            free(clean_elem);
+            return strdup(buf);
+        }
+        case TYPE_STRUCT: {
+            // If it's a single uppercase letter, it's likely a type parameter
+            // and we don't have monomorphization yet, so treat as uint8_t
+            if (type->data.struct_enum.name && 
+                strlen(type->data.struct_enum.name) == 1 && 
+                type->data.struct_enum.name[0] >= 'A' && type->data.struct_enum.name[0] <= 'Z') {
+                return strdup("uint8_t");
+            }
+            char buf[256];
+            snprintf(buf, 256, "struct %s", type->data.struct_enum.name ? type->data.struct_enum.name : "unknown");
             return strdup(buf);
         }
         case TYPE_ENUM: {
             char buf[256];
-            snprintf(buf, 256, "enum %s", type->data.name);
+            snprintf(buf, 256, "enum %s", type->data.struct_enum.name ? type->data.struct_enum.name : "unknown");
             return strdup(buf);
         }
+        case TYPE_RESULT:
+            return strdup("struct Result*");
+        case TYPE_FUNCTION:
+            return strdup("void*");
         default:
             return strdup("long");
     }
 }
+
+// Collect all slice types used in a type (recursive)
+static void collect_slice_types(Type *type, Type ***slice_types, size_t *count, size_t *capacity) {
+    if (!type) return;
+    
+    if (type->kind == TYPE_SLICE) {
+        // Check if already collected (simple duplicate check)
+        for (size_t i = 0; i < *count; i++) {
+            // Simple comparison - just check element type kind
+            char *s1 = type_to_c_string(type->data.slice.element);
+            char *s2 = type_to_c_string((*slice_types)[i]->data.slice.element);
+            int cmp = strcmp(s1, s2);
+            free(s1);
+            free(s2);
+            if (cmp == 0) return;
+        }
+        
+        // Add to collection
+        if (*count >= *capacity) {
+            *capacity = (*capacity == 0) ? 4 : (*capacity * 2);
+            *slice_types = realloc(*slice_types, sizeof(Type*) * (*capacity));
+        }
+        (*slice_types)[(*count)++] = type;
+        
+        // Recurse into element type
+        collect_slice_types(type->data.slice.element, slice_types, count, capacity);
+    } else if (type->kind == TYPE_POINTER) {
+        collect_slice_types(type->data.pointer.base, slice_types, count, capacity);
+    } else if (type->kind == TYPE_ARRAY) {
+        collect_slice_types(type->data.array.element, slice_types, count, capacity);
+    }
+}
+
+// Emit slice struct definition
+static void emit_slice_struct(FILE *output, Type *slice_type) {
+    char *elem_c_type = type_to_c_string(slice_type->data.slice.element);
+    char *slice_c_type = type_to_c_string(slice_type);
+    
+    // Check if struct name slice_c_type starts with "struct "
+    char *struct_name = slice_c_type;
+    if (strncmp(slice_c_type, "struct ", 7) == 0) {
+        struct_name += 7;
+    }
+    
+    fprintf(output, "struct %s {\n", struct_name);
+    fprintf(output, "    %s* data;\n", elem_c_type);
+    fprintf(output, "    int64_t len;\n");
+    fprintf(output, "};\n\n");
+    
+    free(elem_c_type);
+    free(slice_c_type);
+}
+
+
 
 static void gen_struct_decl(CodeGenerator *gen, ASTDecl *decl) {
     if (decl->type != AST_STRUCT_DECL) return;
@@ -561,6 +750,32 @@ static void gen_enum_decl(CodeGenerator *gen, ASTDecl *decl) {
     fprintf(gen->output, "};\n\n");
 }
 
+
+static void collect_slice_types_from_stmt(ASTStmt *stmt, Type ***types, size_t *count, size_t *cap) {
+    if (!stmt) return;
+    switch (stmt->type) {
+        case AST_BLOCK_STMT:
+            for (size_t i = 0; i < stmt->data.block.stmt_count; i++)
+                collect_slice_types_from_stmt(stmt->data.block.statements[i], types, count, cap);
+            break;
+        case AST_VAR_DECL_STMT:
+             collect_slice_types(stmt->data.var_decl.var_type, types, count, cap);
+             break;
+        case AST_IF_STMT:
+             collect_slice_types_from_stmt(stmt->data.if_stmt.then_branch, types, count, cap);
+             collect_slice_types_from_stmt(stmt->data.if_stmt.else_branch, types, count, cap);
+             break;
+        case AST_WHILE_STMT:
+             collect_slice_types_from_stmt(stmt->data.while_stmt.body, types, count, cap);
+             break;
+        case AST_FOR_STMT:
+             collect_slice_types_from_stmt(stmt->data.for_stmt.initializer, types, count, cap);
+             collect_slice_types_from_stmt(stmt->data.for_stmt.body, types, count, cap);
+             break;
+        default: break;
+    }
+}
+
 // Main code generation function
 void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
     if (!gen || !project || !output) return;
@@ -586,19 +801,111 @@ void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
     fprintf(output, "    } data;\n");
     fprintf(output, "};\n\n");
     
-    // Generate struct definitions
-    fprintf(output, "// Struct definitions\n");
+    // Collect and emit slice struct definitions
+    Type **slice_types = NULL;
+    size_t slice_count = 0;
+    size_t slice_capacity = 0;
+    
+    // Always include []u8 slice type (for string literals)
+    Type *u8_t = type_create_primitive(TOKEN_U8);
+    Type *u8_slice = type_create_slice(u8_t);
+    collect_slice_types(u8_slice, &slice_types, &slice_count, &slice_capacity);
+    
+    // Collect from all global declarations
     for (size_t m_idx = 0; m_idx < project->module_count; m_idx++) {
         Module *m = project->modules[m_idx];
         if (m->ast) {
              for (size_t i = 0; i < m->ast->decl_count; i++) {
                  ASTDecl *decl = m->ast->declarations[i];
-                 if (decl->type == AST_STRUCT_DECL) {
-                     gen_struct_decl(gen, decl);
-                 } else if (decl->type == AST_ENUM_DECL) {
-                     gen_enum_decl(gen, decl);
+                 if (decl->type == AST_VAR_DECL_STMT) {
+                     collect_slice_types(decl->data.var_decl.var_type, &slice_types, &slice_count, &slice_capacity);
+                 } else if (decl->type == AST_FUNCTION_DECL) {
+                     collect_slice_types(decl->data.function.return_type, &slice_types, &slice_count, &slice_capacity);
+                     for (size_t p=0; p < decl->data.function.param_count; p++) {
+                         collect_slice_types(decl->data.function.params[p].param_type, &slice_types, &slice_count, &slice_capacity);
+                     }
+                     
+                     if (decl->data.function.body) {
+                         collect_slice_types_from_stmt(decl->data.function.body, &slice_types, &slice_count, &slice_capacity);
+                     }
+                 } else if (decl->type == AST_STRUCT_DECL) {
+                     for (size_t f=0; f < decl->data.struct_decl.field_count; f++) {
+                         collect_slice_types(decl->data.struct_decl.fields[f].field_type, &slice_types, &slice_count, &slice_capacity);
+                     }
                  }
              }
+        }
+    }
+    
+    if (slice_count > 0) {
+        fprintf(output, "// Slice definitions\n");
+        for (size_t i = 0; i < slice_count; i++) {
+            emit_slice_struct(output, slice_types[i]);
+        }
+        free(slice_types);
+        fprintf(output, "\n");
+    }
+    
+    // Generate monomorphized and regular struct/enum definitions from symbol table
+    // Use the symbol table to ensure we use mangled names and avoid duplicates
+    for (size_t m_idx = 0; m_idx < project->module_count; m_idx++) {
+        Module *m = project->modules[m_idx];
+        if (m->symtable && m->symtable->global_scope) {
+            Scope *scope = m->symtable->global_scope;
+            for (size_t i = 0; i < scope->symbol_count; i++) {
+                Symbol *sym = scope->symbols[i];
+                if (sym->kind == SYMBOL_TYPE) {
+                    // 1. Skip if it's not the canonical name for this type (avoids aliases)
+                    if (sym->type->data.struct_enum.name && 
+                        strcmp(sym->name, sym->type->data.struct_enum.name) != 0) {
+                        continue;
+                    }
+                    
+                    // 2. Skip generic templates (they are not concrete types)
+                    if (sym->type_param_count > 0) {
+                        continue;
+                    }
+                    
+                    // 3. Skip built-in types that are handled manually
+                    if (strcmp(sym->name, "Result") == 0) {
+                        continue;
+                    }
+
+                    if (sym->type->kind == TYPE_STRUCT) {
+                        // Emit struct
+                        if (sym->is_packed) {
+                            fprintf(output, "struct __attribute__((packed)) %s {\n", sym->name);
+                        } else {
+                            fprintf(output, "struct %s {\n", sym->name);
+                        }
+                        gen->indent_level++;
+                        for (size_t j = 0; j < sym->field_count; j++) {
+                            print_indent(gen);
+                            char *type_str = type_to_c_string(sym->fields[j].type);
+                            print_decl(output, type_str, sym->fields[j].name);
+                            fprintf(output, ";\n");
+                            free(type_str);
+                        }
+                        gen->indent_level--;
+                        fprintf(output, "};\n\n");
+                    } else if (sym->type->kind == TYPE_ENUM) {
+                        // Emit enum
+                        fprintf(output, "enum %s {\n", sym->name);
+                        gen->indent_level++;
+                        for (size_t j = 0; j < sym->variant_count; j++) {
+                            print_indent(gen);
+                            fprintf(output, "%s", sym->variants[j]);
+                            if (j < sym->variant_count - 1) {
+                                fprintf(output, ",\n");
+                            } else {
+                                fprintf(output, "\n");
+                            }
+                        }
+                        gen->indent_level--;
+                        fprintf(output, "};\n\n");
+                    }
+                }
+            }
         }
     }
     fprintf(output, "\n");
@@ -610,13 +917,26 @@ void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
     fprintf(output, "void virex_copy(void* dst, const void* src, long long count);\n");
     fprintf(output, "void virex_set(void* dst, int value, long long count);\n");
     fprintf(output, "void virex_print_i32(int value);\n");
-    fprintf(output, "void virex_println_i32(int value);\n");
+    fprintf(output, "void virex_print_i64(long long value);\n");
     fprintf(output, "void virex_print_bool(int value);\n");
-    fprintf(output, "void virex_println_bool(int value);\n");
     fprintf(output, "void virex_print_str(const char* str);\n");
-    fprintf(output, "void virex_println_str(const char* str);\n");
+    fprintf(output, "void virex_print_slice_uint8_t(struct Slice_uint8_t s);\n");
+    fprintf(output, "void virex_print_f64(double value);\n");
     fprintf(output, "void virex_exit(int code);\n");
     fprintf(output, "void virex_init_args(int argc, char** argv);\n");
+    fprintf(output, "void virex_slice_bounds_check(long long index, long long len);\n");
+    fprintf(output, "void virex_slice_range_check(long long start, long long end, long long cap);\n");
+    // Math helpers
+    fprintf(output, "double virex_math_sqrt(double x);\n");
+    fprintf(output, "double virex_math_pow(double x, double y);\n");
+    fprintf(output, "double virex_math_sin(double x);\n");
+    fprintf(output, "double virex_math_cos(double x);\n");
+    fprintf(output, "double virex_math_tan(double x);\n");
+    fprintf(output, "double virex_math_log(double x);\n");
+    fprintf(output, "double virex_math_exp(double x);\n");
+    fprintf(output, "double virex_math_fabs(double x);\n");
+    fprintf(output, "double virex_math_floor(double x);\n");
+    fprintf(output, "double virex_math_ceil(double x);\n");
     // Result helpers
     fprintf(output, "long virex_result_ok(long val) {\n");
     fprintf(output, "    struct Result* res = malloc(sizeof(struct Result));\n");
@@ -630,7 +950,36 @@ void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
     fprintf(output, "    res->data.err_val = val;\n");
     fprintf(output, "    return (long)res;\n");
     fprintf(output, "}\n\n");
-    fprintf(output, "void virex_init_args(int argc, char** argv);\n\n");
+    fprintf(output, "void virex_init_args(int argc, char** argv);\n");
+    
+    fprintf(output, "void virex_slice_bounds_check(long long index, long long len) {\n");
+    fprintf(output, "    if (index < 0 || index >= len) {\n");
+    fprintf(output, "        fprintf(stderr, \"panic: index out of bounds: index %%lld, len %%lld\\n\", index, len);\n");
+    fprintf(output, "        exit(134);\n");
+    fprintf(output, "    }\n");
+    fprintf(output, "}\n");
+    
+    fprintf(output, "void virex_slice_range_check(long long start, long long end, long long cap) {\n");
+    fprintf(output, "    if (start < 0 || end < start || end > cap) {\n");
+    fprintf(output, "        fprintf(stderr, \"panic: slice bounds out of range: [%%lld:%%lld] capacity %%lld\\n\", start, end, cap);\n");
+    fprintf(output, "        exit(134);\n");
+    fprintf(output, "    }\n");
+    fprintf(output, "}\n\n");
+    
+    fprintf(output, "void virex_print_slice_uint8_t(struct Slice_uint8_t s) {\n");
+    fprintf(output, "    if (s.data) {\n");
+    fprintf(output, "        fwrite(s.data, 1, s.len, stdout);\n");
+    fprintf(output, "    }\n");
+    fprintf(output, "}\n\n");
+    
+    // std::mem runtime implementations
+    fprintf(output, "void* alloc(long long count) {\n");
+    fprintf(output, "    return calloc(count, 1);\n");
+    fprintf(output, "}\n\n");
+    
+    fprintf(output, "void copy(void* dst, const void* src, long long count) {\n");
+    fprintf(output, "    memcpy(dst, src, count);\n");
+    fprintf(output, "}\n\n");
     
     // Extern function declarations (collected from all modules)
     fprintf(output, "// Extern function declarations\n");
@@ -647,8 +996,9 @@ void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
                         strcmp(name, "malloc") == 0 || strcmp(name, "free") == 0 ||
                         strcmp(name, "exit") == 0 || strcmp(name, "sprintf") == 0 ||
                         strcmp(name, "snprintf") == 0 || strcmp(name, "fprintf") == 0 ||
-                        strcmp(name, "strlen") == 0 || strcmp(name, "strcmp") == 0) {
-                        continue; // Already declared in stdio.h/stdlib.h
+                        strcmp(name, "strlen") == 0 || strcmp(name, "strcmp") == 0 ||
+                        decl->data.function.type_param_count > 0) {
+                        continue; // Already declared in headers or handled by builtins
                     }
                     
                     // For extern functions, we don't mangle names and use proper C types
@@ -691,8 +1041,13 @@ void codegen_generate_c(CodeGenerator *gen, Project *project, FILE *output) {
         // Emit globals
         for (size_t i = 0; i < ir_module->global_count; i++) {
             IRGlobal *g = ir_module->globals[i];
-            // For now assuming primitive initialization
-            fprintf(output, "%s %s = %ld;\n", g->c_type, g->name, g->init_value);
+            // Use print_decl for globals to handle array types correctly
+            print_decl(output, g->c_type, g->name);
+            if (strchr(g->c_type, '[') == NULL) {
+                fprintf(output, " = %ld;\n", g->init_value);
+            } else {
+                fprintf(output, ";\n"); // Arrays can't be initialized with a single long value
+            }
         }
         
         for (size_t i = 0; i < ir_module->function_count; i++) {

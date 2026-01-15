@@ -5,6 +5,6 @@ import "io.vx" as io;
 
 func main() -> i32 {
     var i32 sum = math.add(10, 20);
-    io.println(sum);
+    io.print(sum); io.print("\n");
     return 0;
 }

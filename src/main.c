@@ -139,7 +139,7 @@ static int compile_file(const char *filename, int extra_argc, char **extra_argv)
     fclose(output);
     
     char compile_cmd[4096];
-    int offset = snprintf(compile_cmd, sizeof(compile_cmd), "gcc -O2 %s runtime/virex_runtime.o", output_filename);
+    int offset = snprintf(compile_cmd, sizeof(compile_cmd), "gcc -O2 %s runtime/virex_runtime.o -lm", output_filename);
     
     // Add extra arguments (flags, objects, libs)
     for (int i = 0; i < extra_argc; i++) {

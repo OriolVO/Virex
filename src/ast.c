@@ -95,6 +95,18 @@ ASTExpr *ast_create_index(ASTExpr *array, ASTExpr *index, size_t line, size_t co
     return expr;
 }
 
+ASTExpr *ast_create_slice_expr(ASTExpr *array, ASTExpr *start, ASTExpr *end, size_t line, size_t column) {
+    ASTExpr *expr = malloc(sizeof(ASTExpr));
+    expr->type = AST_SLICE_EXPR;
+    expr->line = line;
+    expr->column = column;
+    expr->expr_type = NULL;
+    expr->data.slice.array = array;
+    expr->data.slice.start = start;
+    expr->data.slice.end = end;
+    return expr;
+}
+
 ASTExpr *ast_create_member(ASTExpr *object, const char *member, bool is_arrow, size_t line, size_t column) {
     ASTExpr *expr = malloc(sizeof(ASTExpr));
     expr->type = AST_MEMBER_EXPR;
@@ -104,6 +116,17 @@ ASTExpr *ast_create_member(ASTExpr *object, const char *member, bool is_arrow, s
     expr->data.member.object = object;
     expr->data.member.member = strdup(member);
     expr->data.member.is_arrow = is_arrow;
+    return expr;
+}
+
+ASTExpr *ast_create_cast(Type *target_type, ASTExpr *expr_to_cast, size_t line, size_t column) {
+    ASTExpr *expr = malloc(sizeof(ASTExpr));
+    expr->type = AST_CAST_EXPR;
+    expr->line = line;
+    expr->column = column;
+    expr->expr_type = NULL;
+    expr->data.cast.target_type = target_type;
+    expr->data.cast.expr = expr_to_cast;
     return expr;
 }
 
@@ -247,12 +270,14 @@ ASTDecl *ast_create_function(const char *name, char **type_params, size_t type_p
     return decl;
 }
 
-ASTDecl *ast_create_struct(const char *name, ASTField *fields, size_t field_count, bool is_public, bool is_packed, size_t line, size_t column) {
+ASTDecl *ast_create_struct(const char *name, char **type_params, size_t type_param_count, ASTField *fields, size_t field_count, bool is_public, bool is_packed, size_t line, size_t column) {
     ASTDecl *decl = malloc(sizeof(ASTDecl));
     decl->type = AST_STRUCT_DECL;
     decl->line = line;
     decl->column = column;
     decl->data.struct_decl.name = strdup(name);
+    decl->data.struct_decl.type_params = type_params;
+    decl->data.struct_decl.type_param_count = type_param_count;
     decl->data.struct_decl.fields = fields;
     decl->data.struct_decl.field_count = field_count;
     decl->data.struct_decl.is_public = is_public;
@@ -260,12 +285,14 @@ ASTDecl *ast_create_struct(const char *name, ASTField *fields, size_t field_coun
     return decl;
 }
 
-ASTDecl *ast_create_enum(const char *name, ASTEnumVariant *variants, size_t variant_count, bool is_public, size_t line, size_t column) {
+ASTDecl *ast_create_enum(const char *name, char **type_params, size_t type_param_count, ASTEnumVariant *variants, size_t variant_count, bool is_public, size_t line, size_t column) {
     ASTDecl *decl = malloc(sizeof(ASTDecl));
     decl->type = AST_ENUM_DECL;
     decl->line = line;
     decl->column = column;
     decl->data.enum_decl.name = strdup(name);
+    decl->data.enum_decl.type_params = type_params;
+    decl->data.enum_decl.type_param_count = type_param_count;
     decl->data.enum_decl.variants = variants;
     decl->data.enum_decl.variant_count = variant_count;
     decl->data.enum_decl.is_public = is_public;
@@ -357,9 +384,18 @@ void ast_free_expr(ASTExpr *expr) {
             ast_free_expr(expr->data.index.array);
             ast_free_expr(expr->data.index.index);
             break;
+        case AST_SLICE_EXPR:
+            ast_free_expr(expr->data.slice.array);
+            ast_free_expr(expr->data.slice.start);
+            ast_free_expr(expr->data.slice.end);
+            break;
         case AST_MEMBER_EXPR:
             ast_free_expr(expr->data.member.object);
             free(expr->data.member.member);
+            break;
+        case AST_CAST_EXPR:
+            type_free(expr->data.cast.target_type);
+            ast_free_expr(expr->data.cast.expr);
             break;
         default:
             break;
@@ -460,6 +496,12 @@ void ast_free_decl(ASTDecl *decl) {
             break;
         case AST_STRUCT_DECL:
             free(decl->data.struct_decl.name);
+            if (decl->data.struct_decl.type_params) {
+                for (size_t i = 0; i < decl->data.struct_decl.type_param_count; i++) {
+                    free(decl->data.struct_decl.type_params[i]);
+                }
+                free(decl->data.struct_decl.type_params);
+            }
             for (size_t i = 0; i < decl->data.struct_decl.field_count; i++) {
                 type_free(decl->data.struct_decl.fields[i].field_type);
                 free(decl->data.struct_decl.fields[i].name);
@@ -468,6 +510,12 @@ void ast_free_decl(ASTDecl *decl) {
             break;
         case AST_ENUM_DECL:
             free(decl->data.enum_decl.name);
+            if (decl->data.enum_decl.type_params) {
+                for (size_t i = 0; i < decl->data.enum_decl.type_param_count; i++) {
+                    free(decl->data.enum_decl.type_params[i]);
+                }
+                free(decl->data.enum_decl.type_params);
+            }
             for (size_t i = 0; i < decl->data.enum_decl.variant_count; i++) {
                 free(decl->data.enum_decl.variants[i].name);
             }
@@ -555,9 +603,21 @@ void ast_print_expr(const ASTExpr *expr, int indent) {
             ast_print_expr(expr->data.index.array, indent + 1);
             ast_print_expr(expr->data.index.index, indent + 1);
             break;
+        case AST_SLICE_EXPR:
+            printf("Slice:\n");
+            ast_print_expr(expr->data.slice.array, indent + 1);
+            printf("Start:\n");
+            ast_print_expr(expr->data.slice.start, indent + 2);
+            printf("End:\n");
+            ast_print_expr(expr->data.slice.end, indent + 2);
+            break;
         case AST_MEMBER_EXPR:
             printf("Member: %s %s\n", expr->data.member.is_arrow ? "->" : ".", expr->data.member.member);
             ast_print_expr(expr->data.member.object, indent + 1);
+            break;
+        case AST_CAST_EXPR:
+            printf("Cast:\n");
+            ast_print_expr(expr->data.cast.expr, indent + 1);
             break;
         default:
             printf("Unknown expression\n");

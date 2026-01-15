@@ -28,7 +28,7 @@ struct Batch {
 };
 
 func main() -> i32 {
-    io.println("Testing large enums...");
+    io.print("Testing large enums..."); io.print("\n");
 
     // Test specific values
     var LargeEnum e1 = V0;
@@ -39,12 +39,12 @@ func main() -> i32 {
     // Since we don't have explicit cast syntax yet (?), we rely on implicit int conversion or equality.
     
     if (e1 != V0) {
-        io.println("FAIL: V0 mismatch");
+        io.print("FAIL: V0 mismatch"); io.print("\n");
         exit(1);
     }
     
     if (e2 != V50) {
-        io.println("FAIL: V50 mismatch");
+        io.print("FAIL: V50 mismatch"); io.print("\n");
         exit(1);
     }
     
@@ -55,14 +55,14 @@ func main() -> i32 {
     c.active = true;
     
     if (c.status != V25) {
-        io.println("FAIL: Struct enum field mismatch");
+        io.print("FAIL: Struct enum field mismatch"); io.print("\n");
         exit(1);
     }
     
     // Test modification
     c.status = V42;
     if (c.status != V42) {
-        io.println("FAIL: Struct enum modification failed");
+        io.print("FAIL: Struct enum modification failed"); io.print("\n");
         exit(1);
     }
     
@@ -72,10 +72,10 @@ func main() -> i32 {
     b.processing[4] = V20;
     
     if (b.processing[0] != V10 || b.processing[4] != V20) {
-        io.println("FAIL: Array of enums mismatch");
+        io.print("FAIL: Array of enums mismatch"); io.print("\n");
         exit(1);
     }
 
-    io.println("PASS: Large enum tests passed");
+    io.print("PASS: Large enum tests passed"); io.print("\n");
     return 0;
 }

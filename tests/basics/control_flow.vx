@@ -1,14 +1,14 @@
 import "io.vx";
 
 func main() -> i32 {
-    io.println("Testing Control Flow:");
+    io.print("Testing Control Flow:"); io.print("\n");
     
     // If/Else
     var i32 x = 10;
     if (x > 5) {
-        io.println("x is > 5");
+        io.print("x is > 5"); io.print("\n");
     } else {
-        io.println("x is <= 5");
+        io.print("x is <= 5"); io.print("\n");
     }
     
     // While
@@ -19,7 +19,7 @@ func main() -> i32 {
         io.print(i);
         io.print(" ");
     }
-    io.println("");
+    io.print(""); io.print("\n");
     
     // For
     io.print("For loop (0-4): ");
@@ -27,7 +27,7 @@ func main() -> i32 {
         io.print(j);
         io.print(" ");
     }
-    io.println("");
+    io.print(""); io.print("\n");
     
     return 0;
 }

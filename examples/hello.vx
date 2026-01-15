@@ -3,8 +3,8 @@
 import "io.vx";
 
 func main() -> i32 {
-    io.println("Hello, Virex!");
-    io.println("This is a systems programming language with generic print!");
-    io.println(42);
+    io.print("Hello, Virex!"); io.print("\n");
+    io.print("This is a systems programming language with generic print!"); io.print("\n");
+    io.print(42); io.print("\n");
     return 0;
 }

@@ -17,6 +17,7 @@ static bool is_numeric_type(Type *type);
 static bool is_integer_type(Type *type);
 static bool infer_type(Type *param_type, Type *arg_type, char **type_params, size_t count, Type **inferred);
 static void resolve_type(SemanticAnalyzer *sa, Type *type);
+static Symbol *find_type_symbol(SemanticAnalyzer *sa, const char *name);
 
 // Create semantic analyzer
 SemanticAnalyzer *semantic_create(void) {
@@ -30,11 +31,35 @@ SemanticAnalyzer *semantic_create(void) {
     sa->strict_unsafe_mode = false;
     sa->current_block_has_unsafe_op = false;
     sa->current_filename = NULL;
+    
+    // Initialize instantiation registry
+    sa->instantiation_registry = malloc(sizeof(InstantiationRegistry));
+    sa->instantiation_registry->instantiations = NULL;
+    sa->instantiation_registry->count = 0;
+    sa->instantiation_registry->capacity = 0;
+    
     return sa;
 }
 
 void semantic_free(SemanticAnalyzer *sa) {
     if (!sa) return;
+    
+    // Free instantiation registry
+    if (sa->instantiation_registry) {
+        for (size_t i = 0; i < sa->instantiation_registry->count; i++) {
+            GenericInstantiation *inst = &sa->instantiation_registry->instantiations[i];
+            free(inst->base_name);
+            free(inst->mangled_name);
+            for (size_t j = 0; j < inst->type_arg_count; j++) {
+                type_free(inst->type_args[j]);
+            }
+            free(inst->type_args);
+            // Note: original_symbol and monomorphized_symbol are owned by symbol table
+        }
+        free(sa->instantiation_registry->instantiations);
+        free(sa->instantiation_registry);
+    }
+    
     symtable_free(sa->symtable);
     free(sa);
 }
@@ -63,12 +88,24 @@ static bool types_equal(Type *a, Type *b) {
         case TYPE_ARRAY:
             return a->data.array.size == b->data.array.size &&
                    types_equal(a->data.array.element, b->data.array.element);
+        case TYPE_SLICE:
+             return types_equal(a->data.slice.element, b->data.slice.element);
         case TYPE_STRUCT:
         case TYPE_ENUM:
-            return strcmp(a->data.name, b->data.name) == 0;
+            if (!a->data.struct_enum.name || !b->data.struct_enum.name) return false;
+            if (strcmp(a->data.struct_enum.name, b->data.struct_enum.name) != 0) return false;
+            if (a->data.struct_enum.type_arg_count != b->data.struct_enum.type_arg_count) return false;
+            for (size_t i = 0; i < a->data.struct_enum.type_arg_count; i++) {
+                if (!types_equal(a->data.struct_enum.type_args[i], b->data.struct_enum.type_args[i])) return false;
+            }
+            return true;
         case TYPE_FUNCTION:
-            // Simplified function type comparison
-            return types_equal(a->data.function.return_type, b->data.function.return_type);
+            if (a->data.function.param_count != b->data.function.param_count) return false;
+            if (!types_equal(a->data.function.return_type, b->data.function.return_type)) return false;
+            for (size_t i = 0; i < a->data.function.param_count; i++) {
+                if (!types_equal(a->data.function.param_types[i], b->data.function.param_types[i])) return false;
+            }
+            return true;
         case TYPE_RESULT:
             return types_equal(a->data.result.ok_type, b->data.result.ok_type) &&
                    types_equal(a->data.result.err_type, b->data.result.err_type);
@@ -81,20 +118,12 @@ static bool types_compatible(Type *a, Type *b) {
     
     if (a->kind == TYPE_POINTER && b->kind == TYPE_POINTER) {
         if (a->data.pointer.non_null && !b->data.pointer.non_null) {
-            return false; // Cannot assign nullable to non-null
+            return false;
         }
-        
-        // Universal null pointer: *void is compatible with any *T
         if (b->data.pointer.base->kind == TYPE_PRIMITIVE && b->data.pointer.base->data.primitive == TOKEN_VOID) {
             return true;
         }
-
-        // Base types must be compatible (for now exact match)
-        if (!types_equal(a->data.pointer.base, b->data.pointer.base)) {
-            return false;
-        }
-
-        return true;
+        return types_equal(a->data.pointer.base, b->data.pointer.base);
     }
 
     if (a->kind == TYPE_RESULT && b->kind == TYPE_RESULT) {
@@ -113,12 +142,8 @@ static bool types_compatible(Type *a, Type *b) {
         return ok_compat && err_compat;
     }
 
-    // Allow implicit integer conversions (e.g. i32 literal to u8)
-    if (is_integer_type(a) && is_integer_type(b)) {
-        return true;
-    }
-
-    // For now, just use equality for others
+    if (is_integer_type(a) && is_integer_type(b)) return true;
+    
     return types_equal(a, b);
 }
 
@@ -150,7 +175,8 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
                 case TOKEN_FALSE:
                     return type_create_primitive(TOKEN_BOOL);
                 case TOKEN_STRING:
-                    return type_create_primitive(TOKEN_CSTRING);
+                    // String literals are []u8 slices
+                    return type_create_slice(type_create_primitive(TOKEN_U8));
                 case TOKEN_NULL:
                     // Universal null pointer: *void
                     return type_create_pointer(type_create_primitive(TOKEN_VOID), false);
@@ -270,6 +296,8 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
                         
                     Symbol *sym = symtable_lookup(sa->symtable, expr->data.binary.left->data.variable.name);
                     if (sym) {
+                        // TODO: Re-implement pointer scope tracking
+                        /*
                         int lhs_depth = sym->scope_depth;
                         int rhs_depth = right_type->data.pointer.scope_depth;
                         
@@ -279,6 +307,7 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
                             semantic_error(sa, expr->line, expr->column, "cannot assign pointer to value with shorter lifetime");
                             return NULL;
                         }
+                        */
                     }
                 }
                 
@@ -318,11 +347,12 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
                 if (expr->data.unary.operand->type == AST_VARIABLE_EXPR) {
                     Symbol *sym = symtable_lookup(sa->symtable, expr->data.unary.operand->data.variable.name);
                     if (sym) {
-                        ptr_type->data.pointer.scope_depth = sym->scope_depth;
+                        // TODO: Re-implement scope tracking
+                        // ptr_type->data.pointer.scope_depth = sym->scope_depth;
                     }
                 } else {
-                     // Temporary/Expression address has local lifetime of current scope
-                     ptr_type->data.pointer.scope_depth = sa->scope_depth;
+                     // TODO: Re-implement scope tracking
+                     // ptr_type->data.pointer.scope_depth = sa->scope_depth;
                 }
                 
                 return ptr_type;
@@ -379,6 +409,7 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             // Get function type
             Symbol *func_symbol = NULL;
             char *func_name = NULL;
+            const char *module_name = NULL;
             
             if (expr->data.call.callee->type == AST_VARIABLE_EXPR) {
                 func_name = expr->data.call.callee->data.variable.name;
@@ -390,6 +421,7 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
                     Symbol *mod_sym = symtable_lookup(sa->symtable, obj->data.variable.name);
                     if (mod_sym && mod_sym->kind == SYMBOL_MODULE) {
                         func_name = expr->data.call.callee->data.member.member;
+                        module_name = mod_sym->name;
                         func_symbol = symtable_lookup(mod_sym->module_table, func_name);
                         
                         if (func_symbol && !func_symbol->is_public) {
@@ -421,9 +453,13 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
                 
                 // std::io::print/println (names might be namespaced or raw depending on import)
                 // Also check for 'exit', 'assert'
-                if (strcmp(name, "print") == 0 || strcmp(name, "println") == 0 ||
+                if (strcmp(name, "print") == 0 || 
                     strcmp(name, "exit") == 0 || strcmp(name, "assert") == 0 ||
-                    strstr(name, "print") != NULL || strstr(name, "println") != NULL) {
+                    strstr(name, "print") != NULL ||
+                    (module_name && (strcmp(module_name, "math") == 0 || strcmp(module_name, "std::math") == 0)) ||
+                    (module_name && (strcmp(module_name, "result") == 0 || strcmp(module_name, "std::result") == 0)) ||
+                    strstr(name, "math") != NULL ||
+                    strstr(name, "result") != NULL) {
                      is_safe_intrinsic = true;
                 }
                 
@@ -536,8 +572,8 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             
             if (!array_type || !index_type) return NULL;
             
-            if (array_type->kind != TYPE_ARRAY && array_type->kind != TYPE_POINTER) {
-                semantic_error(sa, expr->line, expr->column, "indexing requires array or pointer");
+            if (array_type->kind != TYPE_ARRAY && array_type->kind != TYPE_POINTER && array_type->kind != TYPE_SLICE) {
+                semantic_error(sa, expr->line, expr->column, "indexing requires array, slice, or pointer");
                 return NULL;
             }
             
@@ -561,11 +597,49 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             
             if (array_type->kind == TYPE_ARRAY) {
                 return array_type->data.array.element;
+            } else if (array_type->kind == TYPE_SLICE) {
+                return array_type->data.slice.element;
             } else {
                 return array_type->data.pointer.base;
             }
         }
         
+
+        
+        case AST_SLICE_EXPR: {
+            Type *array_type = analyze_expr(sa, expr->data.slice.array);
+            
+            if (expr->data.slice.start) {
+                Type *start_type = analyze_expr(sa, expr->data.slice.start);
+                if (!is_integer_type(start_type)) {
+                    semantic_error(sa, expr->line, expr->column, "slice start index must be integer");
+                }
+            }
+            
+            if (expr->data.slice.end) {
+                Type *end_type = analyze_expr(sa, expr->data.slice.end);
+                if (!is_integer_type(end_type)) {
+                    semantic_error(sa, expr->line, expr->column, "slice end index must be integer");
+                }
+            }
+            
+            if (!array_type) return NULL;
+            
+            Type *elem_type = NULL;
+            if (array_type->kind == TYPE_ARRAY) {
+                elem_type = array_type->data.array.element;
+            } else if (array_type->kind == TYPE_POINTER) {
+                elem_type = array_type->data.pointer.base;
+            } else if (array_type->kind == TYPE_SLICE) {
+                elem_type = array_type->data.slice.element;
+            } else {
+                semantic_error(sa, expr->line, expr->column, "slicing requires array, slice, or pointer");
+                return NULL;
+            }
+            
+            return type_create_slice(type_clone(elem_type));
+        }
+
         case AST_MEMBER_EXPR: {
             // First check if it's a module access (e.g., math.add)
             if (expr->data.member.object->type == AST_VARIABLE_EXPR && !expr->data.member.is_arrow) {
@@ -603,6 +677,20 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
                 object_type = object_type->data.pointer.base;
             }
             
+            // Handle slice members
+            if (object_type->kind == TYPE_SLICE) {
+                 if (strcmp(expr->data.member.member, "len") == 0) {
+                      return type_create_primitive(TOKEN_I64);
+                 }
+                 if (strcmp(expr->data.member.member, "data") == 0) {
+                      return type_create_pointer(type_clone(object_type->data.slice.element), false);
+                 }
+                 char error_msg[256];
+                 snprintf(error_msg, sizeof(error_msg), "slice has no member '%s'", expr->data.member.member);
+                 semantic_error(sa, expr->line, expr->column, error_msg);
+                 return NULL;
+            }
+            
             // Check if it's a struct type
             if (object_type->kind != TYPE_STRUCT) {
                 semantic_error(sa, expr->line, expr->column, "member access requires struct type");
@@ -610,10 +698,10 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             }
             
             // Look up struct definition to validate field
-            Symbol *struct_symbol = symtable_lookup(sa->symtable, object_type->data.name);
+            Symbol *struct_symbol = find_type_symbol(sa, object_type->data.struct_enum.name);
             if (!struct_symbol || struct_symbol->kind != SYMBOL_TYPE) {
                 char error_msg[256];
-                snprintf(error_msg, sizeof(error_msg), "undefined struct '%s'", object_type->data.name);
+                snprintf(error_msg, sizeof(error_msg), "undefined struct '%s'", object_type->data.struct_enum.name);
                 semantic_error(sa, expr->line, expr->column, error_msg);
                 return NULL;
             }
@@ -626,9 +714,16 @@ static Type *analyze_expr_internal(SemanticAnalyzer *sa, ASTExpr *expr) {
             }
             
             char error_msg[256];
-            snprintf(error_msg, sizeof(error_msg), "struct '%s' has no member '%s'", object_type->data.name, expr->data.member.member);
+            snprintf(error_msg, sizeof(error_msg), "struct '%s' has no member '%s'", object_type->data.struct_enum.name, expr->data.member.member);
             semantic_error(sa, expr->line, expr->column, error_msg);
             return NULL;
+        }
+
+        case AST_CAST_EXPR: {
+            resolve_type(sa, expr->data.cast.target_type);
+            Type *expr_type = analyze_expr(sa, expr->data.cast.expr);
+            if (!expr_type) return NULL;
+            return type_clone(expr->data.cast.target_type);
         }
         
         default:
@@ -745,15 +840,24 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
                 } else if (!is_void && !return_type) {
                     semantic_error(sa, stmt->line, stmt->column, "non-void function must return a value");
                 } else if (!is_void && return_type && !types_compatible(sa->current_function_return_type, return_type)) {
-                    semantic_error_ex(sa, "E0001", stmt->line, stmt->column, "return type mismatch", "ensure the returned value matches the function's return type");
+                    char *expected = type_to_string(sa->current_function_return_type);
+                    char *actual = type_to_string(return_type);
+                    char error_msg[512];
+                    snprintf(error_msg, sizeof(error_msg), "return type mismatch: expected '%s', got '%s'", expected, actual);
+                    semantic_error_ex(sa, "E0001", stmt->line, stmt->column, error_msg, "ensure the returned value matches the function's return type");
+                    free(expected);
+                    free(actual);
                 }
                 
+                // TODO: Re-implement pointer scope tracking
+                /*
                 // Escape analysis: Check if returning pointer to local
                 if (return_type && return_type->kind == TYPE_POINTER) {
                     if (return_type->data.pointer.scope_depth > 0) {
                         semantic_error(sa, stmt->line, stmt->column, "cannot return pointer to local stack variable");
                     }
                 }
+                */
             }
             break;
         }
@@ -826,7 +930,7 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
                 }
             } else if (expr_type->kind == TYPE_ENUM) {
                 // Enum match
-                Symbol *enum_sym = symtable_lookup(sa->symtable, expr_type->data.name);
+                Symbol *enum_sym = symtable_lookup(sa->symtable, expr_type->data.struct_enum.name);
                 if (!enum_sym || enum_sym->kind != SYMBOL_TYPE) {
                     semantic_error(sa, stmt->line, stmt->column, "unknown enum type in match");
                     return;
@@ -852,7 +956,7 @@ static void analyze_stmt(SemanticAnalyzer *sa, ASTStmt *stmt) {
                         }
                         if (!found) {
                              char msg[256];
-                             snprintf(msg, sizeof(msg), "invalid pattern variant '%s' for enum '%s'", cse->pattern_tag, expr_type->data.name);
+                             snprintf(msg, sizeof(msg), "invalid pattern variant '%s' for enum '%s'", cse->pattern_tag, expr_type->data.struct_enum.name);
                              semantic_error(sa, stmt->line, stmt->column, msg);
                         }
                     }
@@ -944,9 +1048,9 @@ static bool infer_type(Type *param_type, Type *arg_type, char **params, size_t c
     if (!param_type || !arg_type) return false;
     
     // If param is a generic placeholder (struct with param name)
-    if (param_type->kind == TYPE_STRUCT) {
+    if (param_type->kind == TYPE_STRUCT || param_type->kind == TYPE_ENUM) {
         for (size_t i = 0; i < count; i++) {
-            if (strcmp(param_type->data.name, params[i]) == 0) {
+            if (strcmp(param_type->data.struct_enum.name, params[i]) == 0) {
                 // Found generic param.
                 if (inferred[i] != NULL) {
                     // Already inferred, check compatibility
@@ -977,6 +1081,87 @@ static bool infer_type(Type *param_type, Type *arg_type, char **params, size_t c
     return true; // Match non-generic structure
 }
 
+// Generate mangled name for generic instantiation (e.g., "Pair_i32_i64")
+static char *generate_mangled_name(const char *base_name, Type **type_args, size_t type_arg_count) {
+    if (type_arg_count == 0) {
+        return strdup(base_name);
+    }
+    
+    // Calculate required buffer size
+    size_t size = strlen(base_name) + 1;
+    for (size_t i = 0; i < type_arg_count; i++) {
+        char *type_str = type_to_string(type_args[i]);
+        size += strlen(type_str) + 1; // +1 for underscore
+        free(type_str);
+    }
+    
+    char *mangled = malloc(size);
+    strcpy(mangled, base_name);
+    
+    for (size_t i = 0; i < type_arg_count; i++) {
+        strcat(mangled, "_");
+        char *type_str = type_to_string(type_args[i]);
+        strcat(mangled, type_str);
+        free(type_str);
+    }
+    
+    return mangled;
+}
+
+// Check if a generic instantiation already exists
+static GenericInstantiation *find_instantiation(InstantiationRegistry *registry, const char *base_name, 
+                                                 Type **type_args, size_t type_arg_count) {
+    for (size_t i = 0; i < registry->count; i++) {
+        GenericInstantiation *inst = &registry->instantiations[i];
+        if (strcmp(inst->base_name, base_name) != 0) continue;
+        if (inst->type_arg_count != type_arg_count) continue;
+        
+        bool match = true;
+        for (size_t j = 0; j < type_arg_count; j++) {
+            if (!types_equal(inst->type_args[j], type_args[j])) {
+                match = false;
+                break;
+            }
+        }
+        
+        if (match) return inst;
+    }
+    
+    return NULL;
+}
+
+// Register a new generic instantiation
+static GenericInstantiation *register_instantiation(SemanticAnalyzer *sa, const char *base_name,
+                                                     Type **type_args, size_t type_arg_count,
+                                                     Symbol *original_symbol) {
+    InstantiationRegistry *registry = sa->instantiation_registry;
+    
+    // Check if already exists
+    GenericInstantiation *existing = find_instantiation(registry, base_name, type_args, type_arg_count);
+    if (existing) return existing;
+    
+    // Expand registry if needed
+    if (registry->count >= registry->capacity) {
+        registry->capacity = registry->capacity == 0 ? 8 : registry->capacity * 2;
+        registry->instantiations = realloc(registry->instantiations, 
+                                          sizeof(GenericInstantiation) * registry->capacity);
+    }
+    
+    // Create new instantiation
+    GenericInstantiation *inst = &registry->instantiations[registry->count++];
+    inst->base_name = strdup(base_name);
+    inst->type_arg_count = type_arg_count;
+    inst->type_args = malloc(sizeof(Type*) * type_arg_count);
+    for (size_t i = 0; i < type_arg_count; i++) {
+        inst->type_args[i] = type_clone(type_args[i]);
+    }
+    inst->mangled_name = generate_mangled_name(base_name, type_args, type_arg_count);
+    inst->original_symbol = original_symbol;
+    inst->monomorphized_symbol = NULL; // Will be created later
+    
+    return inst;
+}
+
 static void resolve_type(SemanticAnalyzer *sa, Type *type) {
     if (!type) return;
     
@@ -987,22 +1172,113 @@ static void resolve_type(SemanticAnalyzer *sa, Type *type) {
         case TYPE_ARRAY:
             resolve_type(sa, type->data.array.element);
             break;
-        case TYPE_STRUCT: {
-            // Check if it's actually an enum
-            Symbol *sym = symtable_lookup(sa->symtable, type->data.name);
-            if (sym && sym->kind == SYMBOL_TYPE && sym->type->kind == TYPE_ENUM) {
-                // Convert to ENUM
-                type->kind = TYPE_ENUM;
-                // name is already correct
-            }
-            break;
-        }
         case TYPE_FUNCTION:
             resolve_type(sa, type->data.function.return_type);
             for (size_t i = 0; i < type->data.function.param_count; i++) {
                 resolve_type(sa, type->data.function.param_types[i]);
             }
             break;
+        case TYPE_STRUCT:
+        case TYPE_ENUM: {
+            // Look up type symbol (handles qualified names too)
+            Symbol *sym = find_type_symbol(sa, type->data.struct_enum.name);
+            if (sym && sym->kind == SYMBOL_TYPE) {
+                // Update the type name to the mangled one found in the symbol
+                // but ONLY if it's different to avoid redundant free/strdup
+                if (sym->type->data.struct_enum.name && 
+                    strcmp(type->data.struct_enum.name, sym->type->data.struct_enum.name) != 0) {
+                    free(type->data.struct_enum.name);
+                    type->data.struct_enum.name = strdup(sym->type->data.struct_enum.name);
+                }
+            }
+            
+            if (sym && sym->kind == SYMBOL_TYPE && sym->type->kind == TYPE_ENUM && type->kind == TYPE_STRUCT) {
+                // Convert to ENUM
+                type->kind = TYPE_ENUM;
+            }
+            
+            // Resolve generic arguments first
+            for (size_t i = 0; i < type->data.struct_enum.type_arg_count; i++) {
+                resolve_type(sa, type->data.struct_enum.type_args[i]);
+            }
+            
+            // Handle generic instantiation
+            if (type->data.struct_enum.type_arg_count > 0 && sym && sym->kind == SYMBOL_TYPE) {
+                // Validate type argument count
+                if (sym->type_param_count != type->data.struct_enum.type_arg_count) {
+                    char error_msg[256];
+                    snprintf(error_msg, sizeof(error_msg), 
+                            "type '%s' expects %zu type arguments, got %zu",
+                            type->data.struct_enum.name, sym->type_param_count, 
+                            type->data.struct_enum.type_arg_count);
+                    semantic_error(sa, 0, 0, error_msg);
+                    return;
+                }
+                
+                // Register instantiation
+                GenericInstantiation *inst = register_instantiation(sa, type->data.struct_enum.name,
+                                                                    type->data.struct_enum.type_args,
+                                                                    type->data.struct_enum.type_arg_count,
+                                                                    sym);
+                
+                // Create monomorphized symbol if not already done
+                if (!inst->monomorphized_symbol) {
+                    if (type->kind == TYPE_STRUCT) {
+                        // Create monomorphized struct
+                        Symbol *mono_sym = symbol_create(inst->mangled_name, SYMBOL_TYPE,
+                                                        type_create_struct(inst->mangled_name, NULL, 0),
+                                                        sym->line, sym->column);
+                        mono_sym->is_public = sym->is_public;
+                        mono_sym->field_count = sym->field_count;
+                        mono_sym->fields = malloc(sizeof(StructField) * mono_sym->field_count);
+                        
+                        // Substitute type parameters in fields
+                        for (size_t i = 0; i < sym->field_count; i++) {
+                            mono_sym->fields[i].name = strdup(sym->fields[i].name);
+                            mono_sym->fields[i].type = type_substitute(sym->fields[i].type,
+                                                                       sym->type_params,
+                                                                       inst->type_args,
+                                                                       inst->type_arg_count);
+                        }
+                        
+                        inst->monomorphized_symbol = mono_sym;
+                        
+                        // Insert into global scope (not current scope)
+                        // Save current scope and temporarily switch to global
+                        Scope *saved_scope = sa->symtable->current_scope;
+                        sa->symtable->current_scope = sa->symtable->global_scope;
+                        symtable_insert(sa->symtable, mono_sym);
+                        sa->symtable->current_scope = saved_scope;
+                    } else if (type->kind == TYPE_ENUM) {
+                        // Create monomorphized enum
+                        Symbol *mono_sym = symbol_create(inst->mangled_name, SYMBOL_TYPE,
+                                                        type_create_enum(inst->mangled_name, NULL, 0),
+                                                        sym->line, sym->column);
+                        mono_sym->is_public = sym->is_public;
+                        mono_sym->variant_count = sym->variant_count;
+                        mono_sym->variants = malloc(sizeof(char*) * mono_sym->variant_count);
+                        
+                        // Copy variants (enums don't have associated data yet)
+                        for (size_t i = 0; i < sym->variant_count; i++) {
+                            mono_sym->variants[i] = strdup(sym->variants[i]);
+                        }
+                        
+                        inst->monomorphized_symbol = mono_sym;
+                        
+                        // Insert into global scope (not current scope)
+                        Scope *saved_scope = sa->symtable->current_scope;
+                        sa->symtable->current_scope = sa->symtable->global_scope;
+                        symtable_insert(sa->symtable, mono_sym);
+                        sa->symtable->current_scope = saved_scope;
+                    }
+                }
+                
+                // Update type name to use mangled name
+                free(type->data.struct_enum.name);
+                type->data.struct_enum.name = strdup(inst->mangled_name);
+            }
+            break;
+        }
         default:
             break;
     }
@@ -1077,12 +1353,182 @@ static bool check_return_paths(ASTStmt *stmt) {
 bool semantic_analyze_declarations(SemanticAnalyzer *sa, ASTProgram *program) {
     if (!sa || !program) return false;
     
-    // Pass: Add all function and type declarations to symbol table
+    // Pass 1: Forward-declare all types (structs and enums)
+    for (size_t i = 0; i < program->decl_count; i++) {
+        ASTDecl *decl = program->declarations[i];
+        
+        if (decl->type == AST_STRUCT_DECL) {
+            char mangled_name[512];
+            if (sa->symtable->name) {
+                snprintf(mangled_name, 512, "%s__%s", sa->symtable->name, decl->data.struct_decl.name);
+                for (char *p = mangled_name; p < mangled_name + strlen(sa->symtable->name); p++) {
+                    if (*p == '.') *p = '_';
+                    if (*p == ':') *p = '_';
+                }
+            } else {
+                strncpy(mangled_name, decl->data.struct_decl.name, 511);
+                mangled_name[511] = '\0';
+            }
+            
+            Symbol *struct_symbol = symbol_create(decl->data.struct_decl.name, SYMBOL_TYPE,
+                                                 type_create_struct(mangled_name, NULL, 0),
+                                                 decl->line, decl->column);
+            struct_symbol->is_public = decl->data.struct_decl.is_public;
+            struct_symbol->is_packed = decl->data.struct_decl.is_packed;
+            
+            if (!symtable_insert(sa->symtable, struct_symbol)) {
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), "duplicate declaration of struct '%s'", decl->data.struct_decl.name);
+                semantic_error(sa, decl->line, decl->column, error_msg);
+                continue;
+            }
+            
+            if (strcmp(decl->data.struct_decl.name, mangled_name) != 0) {
+                Symbol *mangled_symbol = symbol_create(mangled_name, SYMBOL_TYPE,
+                                                     type_create_struct(mangled_name, NULL, 0),
+                                                     decl->line, decl->column);
+                mangled_symbol->is_public = decl->data.struct_decl.is_public;
+                mangled_symbol->is_packed = decl->data.struct_decl.is_packed;
+                symtable_insert(sa->symtable, mangled_symbol);
+            }
+        } 
+        else if (decl->type == AST_ENUM_DECL) {
+            char mangled_name[512];
+            if (sa->symtable->name) {
+                snprintf(mangled_name, 512, "%s__%s", sa->symtable->name, decl->data.enum_decl.name);
+                for (char *p = mangled_name; p < mangled_name + strlen(sa->symtable->name); p++) {
+                    if (*p == '.') *p = '_';
+                    if (*p == ':') *p = '_';
+                }
+            } else {
+                strncpy(mangled_name, decl->data.enum_decl.name, 511);
+                mangled_name[511] = '\0';
+            }
+            
+            Symbol *enum_symbol = symbol_create(decl->data.enum_decl.name, SYMBOL_TYPE,
+                                               type_create_enum(mangled_name, NULL, 0),
+                                               decl->line, decl->column);
+            enum_symbol->is_public = decl->data.enum_decl.is_public;
+            
+            if (!symtable_insert(sa->symtable, enum_symbol)) {
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), "duplicate declaration of enum '%s'", decl->data.enum_decl.name);
+                semantic_error(sa, decl->line, decl->column, error_msg);
+                continue;
+            }
+            
+            if (strcmp(decl->data.enum_decl.name, mangled_name) != 0) {
+                Symbol *mangled_symbol = symbol_create(mangled_name, SYMBOL_TYPE,
+                                                     type_create_enum(mangled_name, NULL, 0),
+                                                     decl->line, decl->column);
+                mangled_symbol->is_public = decl->data.enum_decl.is_public;
+                symtable_insert(sa->symtable, mangled_symbol);
+            }
+        }
+    }
+    
+    // Pass 2: Populate fields/variants (can now refer to types from Pass 1)
+    for (size_t i = 0; i < program->decl_count; i++) {
+        ASTDecl *decl = program->declarations[i];
+        
+        if (decl->type == AST_STRUCT_DECL) {
+            Symbol *struct_symbol = symtable_lookup_current(sa->symtable, decl->data.struct_decl.name);
+            if (!struct_symbol) continue;
+            
+            if (decl->data.struct_decl.type_param_count > 0) {
+                struct_symbol->type_param_count = decl->data.struct_decl.type_param_count;
+                struct_symbol->type_params = malloc(sizeof(char*) * struct_symbol->type_param_count);
+                for (size_t k = 0; k < struct_symbol->type_param_count; k++) {
+                    struct_symbol->type_params[k] = strdup(decl->data.struct_decl.type_params[k]);
+                }
+            }
+            
+            struct_symbol->field_count = decl->data.struct_decl.field_count;
+            struct_symbol->fields = malloc(sizeof(StructField) * struct_symbol->field_count);
+            for (size_t j = 0; j < struct_symbol->field_count; j++) {
+                resolve_type(sa, decl->data.struct_decl.fields[j].field_type);
+                struct_symbol->fields[j].name = strdup(decl->data.struct_decl.fields[j].name);
+                struct_symbol->fields[j].type = type_clone(decl->data.struct_decl.fields[j].field_type);
+            }
+            
+            // Sync with mangled symbol if exists
+            char mangled_name[512];
+            if (sa->symtable->name) {
+                snprintf(mangled_name, 512, "%s__%s", sa->symtable->name, decl->data.struct_decl.name);
+                for (char *p = mangled_name; p < mangled_name + strlen(sa->symtable->name); p++) {
+                    if (*p == '.') *p = '_';
+                    if (*p == ':') *p = '_';
+                }
+            } else {
+                strncpy(mangled_name, decl->data.struct_decl.name, 511);
+                mangled_name[511] = '\0';
+            }
+            if (strcmp(decl->data.struct_decl.name, mangled_name) != 0) {
+                Symbol *mangled_symbol = symtable_lookup_current(sa->symtable, mangled_name);
+                if (mangled_symbol) {
+                    mangled_symbol->field_count = struct_symbol->field_count;
+                    mangled_symbol->fields = malloc(sizeof(StructField) * mangled_symbol->field_count);
+                    for (size_t j = 0; j < mangled_symbol->field_count; j++) {
+                        mangled_symbol->fields[j].name = strdup(struct_symbol->fields[j].name);
+                        mangled_symbol->fields[j].type = type_clone(struct_symbol->fields[j].type);
+                    }
+                }
+            }
+        } 
+        else if (decl->type == AST_ENUM_DECL) {
+            Symbol *enum_symbol = symtable_lookup_current(sa->symtable, decl->data.enum_decl.name);
+            if (!enum_symbol) continue;
+            
+            if (decl->data.enum_decl.type_param_count > 0) {
+                enum_symbol->type_param_count = decl->data.enum_decl.type_param_count;
+                enum_symbol->type_params = malloc(sizeof(char*) * enum_symbol->type_param_count);
+                for (size_t k = 0; k < enum_symbol->type_param_count; k++) {
+                    enum_symbol->type_params[k] = strdup(decl->data.enum_decl.type_params[k]);
+                }
+            }
+            
+            enum_symbol->variant_count = decl->data.enum_decl.variant_count;
+            enum_symbol->variants = malloc(sizeof(char*) * enum_symbol->variant_count);
+            for (size_t k = 0; k < decl->data.enum_decl.variant_count; k++) {
+                char *variant_name = decl->data.enum_decl.variants[k].name;
+                enum_symbol->variants[k] = strdup(variant_name);
+                Symbol *variant_sym = symbol_create(variant_name, SYMBOL_CONSTANT, type_clone(enum_symbol->type), decl->line, decl->column);
+                variant_sym->is_initialized = true;
+                variant_sym->is_public = decl->data.enum_decl.is_public;
+                variant_sym->enum_value = k;
+                symtable_insert(sa->symtable, variant_sym);
+            }
+            
+            // Sync with mangled symbol
+            char mangled_name[512];
+            if (sa->symtable->name) {
+                snprintf(mangled_name, 512, "%s__%s", sa->symtable->name, decl->data.enum_decl.name);
+                for (char *p = mangled_name; p < mangled_name + strlen(sa->symtable->name); p++) {
+                    if (*p == '.') *p = '_';
+                    if (*p == ':') *p = '_';
+                }
+            } else {
+                strncpy(mangled_name, decl->data.enum_decl.name, 511);
+                mangled_name[511] = '\0';
+            }
+            if (strcmp(decl->data.enum_decl.name, mangled_name) != 0) {
+                Symbol *mangled_symbol = symtable_lookup_current(sa->symtable, mangled_name);
+                if (mangled_symbol) {
+                    mangled_symbol->variant_count = enum_symbol->variant_count;
+                    mangled_symbol->variants = malloc(sizeof(char*) * mangled_symbol->variant_count);
+                    for (size_t k = 0; k < mangled_symbol->variant_count; k++) {
+                        mangled_symbol->variants[k] = strdup(enum_symbol->variants[k]);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Pass 3: Resolve functions and variables
     for (size_t i = 0; i < program->decl_count; i++) {
         ASTDecl *decl = program->declarations[i];
         
         if (decl->type == AST_FUNCTION_DECL) {
-            // Check for duplicate
             Symbol *existing = symtable_lookup_current(sa->symtable, decl->data.function.name);
             if (existing) {
                 char error_msg[256];
@@ -1091,24 +1537,22 @@ bool semantic_analyze_declarations(SemanticAnalyzer *sa, ASTProgram *program) {
                 continue;
             }
             
+            resolve_type(sa, decl->data.function.return_type);
+            for (size_t k = 0; k < decl->data.function.param_count; k++) {
+                resolve_type(sa, decl->data.function.params[k].param_type);
+            }
             
-            // Create function type
             Type **param_types = malloc(sizeof(Type*) * decl->data.function.param_count);
             for (size_t k = 0; k < decl->data.function.param_count; k++) {
                 param_types[k] = type_clone(decl->data.function.params[k].param_type);
             }
-            Type *func_type = type_create_function(type_clone(decl->data.function.return_type), 
-                                                 param_types, decl->data.function.param_count);
-            
-            // Add function to symbol table
-            Symbol *func_symbol = symbol_create(decl->data.function.name, SYMBOL_FUNCTION,
-                                               func_type, decl->line, decl->column);
+            Type *func_type = type_create_function(type_clone(decl->data.function.return_type), param_types, decl->data.function.param_count);
+            Symbol *func_symbol = symbol_create(decl->data.function.name, SYMBOL_FUNCTION, func_type, decl->line, decl->column);
             func_symbol->param_count = decl->data.function.param_count;
             func_symbol->is_public = decl->data.function.is_public;
             func_symbol->is_extern = decl->data.function.is_extern;
             func_symbol->is_variadic = decl->data.function.is_variadic;
             
-            // Store generic parameters
             if (decl->data.function.type_param_count > 0) {
                 func_symbol->type_param_count = decl->data.function.type_param_count;
                 func_symbol->type_params = malloc(sizeof(char*) * func_symbol->type_param_count);
@@ -1116,9 +1560,9 @@ bool semantic_analyze_declarations(SemanticAnalyzer *sa, ASTProgram *program) {
                     func_symbol->type_params[k] = strdup(decl->data.function.type_params[k]);
                 }
             }
-            
             symtable_insert(sa->symtable, func_symbol);
-        } else if (decl->type == AST_VAR_DECL_STMT) {
+        } 
+        else if (decl->type == AST_VAR_DECL_STMT) {
             ASTGlobalVarDecl *var = &decl->data.var_decl;
             
             Symbol *existing = symtable_lookup_current(sa->symtable, var->name);
@@ -1129,80 +1573,15 @@ bool semantic_analyze_declarations(SemanticAnalyzer *sa, ASTProgram *program) {
                 continue;
             }
             
-            // Add variable to symbol table
             resolve_type(sa, var->var_type);
             Symbol *var_symbol = symbol_create(var->name, SYMBOL_VARIABLE, type_clone(var->var_type), decl->line, decl->column);
             var_symbol->is_public = var->is_public;
             var_symbol->is_const = var->is_const;
-            
             symtable_insert(sa->symtable, var_symbol);
         }
-        else if (decl->type == AST_STRUCT_DECL) {
-            // Add struct to symbol table
-            Symbol *struct_symbol = symbol_create(decl->data.struct_decl.name, SYMBOL_TYPE,
-                                                 type_create_struct(decl->data.struct_decl.name),
-                                                 decl->line, decl->column);
-            struct_symbol->is_public = decl->data.struct_decl.is_public;
-            
-            // Populate fields
-            struct_symbol->field_count = decl->data.struct_decl.field_count;
-            struct_symbol->fields = malloc(sizeof(StructField) * struct_symbol->field_count);
-            for (size_t i = 0; i < struct_symbol->field_count; i++) {
-                // Update AST type in place
-                resolve_type(sa, decl->data.struct_decl.fields[i].field_type);
-                
-                struct_symbol->fields[i].name = strdup(decl->data.struct_decl.fields[i].name);
-                struct_symbol->fields[i].type = type_clone(decl->data.struct_decl.fields[i].field_type);
-                // resolve_type(sa, struct_symbol->fields[i].type); // Already resolved in AST
-            }
-
-            if (!symtable_insert(sa->symtable, struct_symbol)) {
-                char error_msg[256];
-                snprintf(error_msg, sizeof(error_msg), "duplicate declaration of struct '%s'", decl->data.struct_decl.name);
-                semantic_error(sa, decl->line, decl->column, error_msg);
-            }
-        }
-        else if (decl->type == AST_ENUM_DECL) {
-            // Add enum type to symbol table
-            Type *enum_type = type_create_enum(decl->data.enum_decl.name);
-            Symbol *enum_symbol = symbol_create(decl->data.enum_decl.name, SYMBOL_TYPE,
-                                               enum_type,
-                                               decl->line, decl->column);
-            enum_symbol->is_public = decl->data.enum_decl.is_public;
-            
-            // Store variants in symbol for pattern matching
-            enum_symbol->variant_count = decl->data.enum_decl.variant_count;
-            enum_symbol->variants = malloc(sizeof(char*) * enum_symbol->variant_count);
-            
-            if (!symtable_insert(sa->symtable, enum_symbol)) {
-                char error_msg[256];
-                snprintf(error_msg, sizeof(error_msg), "duplicate declaration of enum '%s'", decl->data.enum_decl.name);
-                semantic_error(sa, decl->line, decl->column, error_msg);
-                continue;
-            }
-            
-            // Add enum constants to current scope
-            for (size_t k = 0; k < decl->data.enum_decl.variant_count; k++) {
-                char *variant_name = decl->data.enum_decl.variants[k].name;
-                enum_symbol->variants[k] = strdup(variant_name);
-                
-                // Create symbol for variant
-                Symbol *variant_sym = symbol_create(variant_name, SYMBOL_CONSTANT,
-                                                   type_clone(enum_type),
-                                                   decl->line, decl->column);
-                variant_sym->is_initialized = true;
-                variant_sym->is_public = decl->data.enum_decl.is_public;
-                variant_sym->enum_value = k; // Assign integer value 0, 1, 2...
-                
-                if (!symtable_insert(sa->symtable, variant_sym)) {
-                    char error_msg[256];
-                    snprintf(error_msg, sizeof(error_msg), "duplicate declaration of enum variant '%s'", variant_name);
-                    semantic_error(sa, decl->line, decl->column, error_msg);
-                }
-            }
-        }
     }
-    return !sa->had_error;
+    
+    return !sa->had_error;    return !sa->had_error;
 }
 
 bool semantic_analyze_bodies(SemanticAnalyzer *sa, ASTProgram *program) {
@@ -1245,22 +1624,64 @@ bool semantic_analyze_bodies(SemanticAnalyzer *sa, ASTProgram *program) {
             sa->current_function_return_type = prev_return_type;
             
             symtable_exit_scope(sa->symtable);
-            if (decl->data.var_decl.initializer) {
-                analyze_expr(sa, decl->data.var_decl.initializer);
-                if (decl->data.var_decl.initializer->expr_type) {
-                     if (!types_compatible(decl->data.var_decl.var_type, decl->data.var_decl.initializer->expr_type)) {
-                          char error_msg[256];
-                          char *t1 = type_to_string(decl->data.var_decl.var_type);
-                          char *t2 = type_to_string(decl->data.var_decl.initializer->expr_type);
-                          snprintf(error_msg, sizeof(error_msg), "global variable initializer type mismatch: expected '%s', got '%s'", t1, t2);
-                          free(t1);
-                          free(t2);
-                          semantic_error_ex(sa, "E0001", decl->line, decl->column, error_msg, "global constants/variables must be initialized with compatible types");
-                     }
+        } else if (decl->type == AST_VAR_DECL_STMT && decl->data.var_decl.initializer) {
+            analyze_expr(sa, decl->data.var_decl.initializer);
+            if (decl->data.var_decl.initializer->expr_type) {
+                if (!types_compatible(decl->data.var_decl.var_type, decl->data.var_decl.initializer->expr_type)) {
+                    char error_msg[256];
+                    char *t1 = type_to_string(decl->data.var_decl.var_type);
+                    char *t2 = type_to_string(decl->data.var_decl.initializer->expr_type);
+                    snprintf(error_msg, sizeof(error_msg), "global variable initializer type mismatch: expected '%s', got '%s'", t1, t2);
+                    free(t1);
+                    free(t2);
+                    semantic_error_ex(sa, "E0001", decl->line, decl->column, error_msg, "global constants/variables must be initialized with compatible types");
                 }
             }
         }
     }
     
     return !sa->had_error && error_count() == 0;
+}
+
+static Symbol *find_type_symbol(SemanticAnalyzer *sa, const char *name) {
+    if (!name) return NULL;
+    
+    // 0. Handle qualified name (Module.Type)
+    if (strchr(name, '.')) {
+        char name_copy[512];
+        strncpy(name_copy, name, 511);
+        name_copy[511] = '\0';
+        char *dot = strchr(name_copy, '.');
+        if (dot) {
+            *dot = '\0';
+            char *module_name = name_copy;
+            char *type_name = dot + 1;
+            
+            Symbol *mod_sym = symtable_lookup(sa->symtable, module_name);
+            if (mod_sym && mod_sym->kind == SYMBOL_MODULE && mod_sym->module_table) {
+                Symbol *found = symtable_lookup(mod_sym->module_table, type_name);
+                if (found && found->kind == SYMBOL_TYPE) return found;
+            }
+        }
+    }
+    
+    // 1. Direct lookup in current symbol table (includes parents/globals)
+    Symbol *sym = symtable_lookup(sa->symtable, name);
+    if (sym && sym->kind == SYMBOL_TYPE) {
+        return sym;
+    }
+    
+    // 2. Search in all imported modules
+    Scope *global_scope = sa->symtable->global_scope;
+    for (size_t i = 0; i < global_scope->symbol_count; i++) {
+        Symbol *s = global_scope->symbols[i];
+        if (s->kind == SYMBOL_MODULE && s->module_table) {
+            Symbol *found = symtable_lookup(s->module_table, name);
+            if (found && found->kind == SYMBOL_TYPE) {
+                return found;
+            }
+        }
+    }
+    
+    return NULL;
 }

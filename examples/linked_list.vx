@@ -26,51 +26,51 @@ func is_empty(LinkedList list) -> bool {
 }
 
 func main() -> i32 {
-    io.println("=== LinkedList with malloc/free (Concept Demo) ===");
-    io.println("");
+    io.print("=== LinkedList with malloc/free (Concept Demo) ==="); io.print("\n");
+    io.print(""); io.print("\n");
     
-    io.println("This example demonstrates:");
-    io.println("  - FFI declarations (extern func malloc/free)");
-    io.println("  - Dynamic memory allocation from libc");
-    io.println("  - Pointer-based data structures (concept)");
-    io.println("");
+    io.print("This example demonstrates:"); io.print("\n");
+    io.print("  - FFI declarations (extern func malloc/free)"); io.print("\n");
+    io.print("  - Dynamic memory allocation from libc"); io.print("\n");
+    io.print("  - Pointer-based data structures (concept)"); io.print("\n");
+    io.print(""); io.print("\n");
     
     // Demonstrate malloc/free work
-    io.println("Allocating 16 bytes with malloc...");
+    io.print("Allocating 16 bytes with malloc..."); io.print("\n");
     var i64 ptr = malloc(16);
     io.print("Allocated memory at address: 0x");
-    io.println(ptr);
+    io.print(ptr); io.print("\n");
     
-    io.println("Freeing memory...");
+    io.print("Freeing memory..."); io.print("\n");
     free(ptr);
-    io.println("Memory freed successfully!");
+    io.print("Memory freed successfully!"); io.print("\n");
     
-    io.println("");
-    io.println("Allocating multiple blocks...");
+    io.print(""); io.print("\n");
+    io.print("Allocating multiple blocks..."); io.print("\n");
     var i64 ptr1 = malloc(32);
     var i64 ptr2 = malloc(64);
     var i64 ptr3 = malloc(128);
-    io.println("Allocated 3 blocks (32, 64, 128 bytes)");
+    io.print("Allocated 3 blocks (32, 64, 128 bytes)"); io.print("\n");
     
     free(ptr1);
     free(ptr2);
     free(ptr3);
-    io.println("All blocks freed successfully!");
+    io.print("All blocks freed successfully!"); io.print("\n");
     
-    io.println("");
-    io.println("Note: Full LinkedList implementation requires:");
-    io.println("  - Pointer casting (i64 -> struct*)");
-    io.println("  - Struct member access via raw pointers");
-    io.println("  - Or additional FFI helpers for memory operations");
-    io.println("");
-    io.println("Current limitation: Cannot cast i64 to typed pointers");
-    io.println("and dereference them to access struct members.");
+    io.print(""); io.print("\n");
+    io.print("Note: Full LinkedList implementation requires:"); io.print("\n");
+    io.print("  - Pointer casting (i64 -> struct*)"); io.print("\n");
+    io.print("  - Struct member access via raw pointers"); io.print("\n");
+    io.print("  - Or additional FFI helpers for memory operations"); io.print("\n");
+    io.print(""); io.print("\n");
+    io.print("Current limitation: Cannot cast i64 to typed pointers"); io.print("\n");
+    io.print("and dereference them to access struct members."); io.print("\n");
     
-    io.println("");
-    io.println("See array_list.vx for a complete working list");
-    io.println("implementation using stack-allocated arrays.");
+    io.print(""); io.print("\n");
+    io.print("See array_list.vx for a complete working list"); io.print("\n");
+    io.print("implementation using stack-allocated arrays."); io.print("\n");
     
-    io.println("");
-    io.println("=== Demo Complete ===");
+    io.print(""); io.print("\n");
+    io.print("=== Demo Complete ==="); io.print("\n");
     return 0;
 }

@@ -142,13 +142,38 @@ static void synchronize(Parser *p) {
 static Type *parse_type(Parser *p) {
     Type *type = NULL;
 
-    // Check for generic type parameter <T>
+    // Check for slice type []T (prefix notation)
+    if (check(p, TOKEN_LBRACKET)) {
+        advance(p); // consume [
+        
+        if (check(p, TOKEN_RBRACKET)) {
+            // It's a slice []T
+            advance(p); // consume ]
+            Type *element = parse_type(p);
+            return type_create_slice(element);
+        } else {
+            // It's an array [N]T - parse the size
+            if (p->current->type != TOKEN_INTEGER) {
+                parser_error(p, "expected array size or ']' for slice");
+                return NULL;
+            }
+            size_t size = p->current->value.int_value;
+            advance(p);
+            expect(p, TOKEN_RBRACKET, "expected ']'");
+            
+            // Parse element type
+            Type *element = parse_type(p);
+            return type_create_array(element, size);
+        }
+    }
+
+    // Check for generic type parameter <T> (placeholder)
     if (match(p, TOKEN_LT)) {
         Token *type_param = expect(p, TOKEN_IDENTIFIER, "expected type parameter name");
         expect(p, TOKEN_GT, "expected '>' after type parameter");
         
-        // For now, treat generic type parameters as placeholder types
-        type = type_create_struct(type_param ? type_param->lexeme : "T");
+        // Placeholder types are just struct types with the parameter name
+        type = type_create_struct(type_param ? type_param->lexeme : "T", NULL, 0);
     }
     // Check for function type: func(T1, T2) -> T3
     else if (match(p, TOKEN_FUNC)) {
@@ -197,19 +222,47 @@ static Type *parse_type(Parser *p) {
     }
     // Struct or enum type (or generic placeholder)
     else if (p->current->type == TOKEN_IDENTIFIER) {
-        char *name = p->current->lexeme;
-        advance(p);
-        type = type_create_struct(name);
+        Token *name_tok = expect(p, TOKEN_IDENTIFIER, "expected type name");
+        char full_name[512] = "";
+        if (name_tok && name_tok->lexeme) {
+            strncpy(full_name, name_tok->lexeme, 511);
+        }
+        
+        while (match(p, TOKEN_DOT)) {
+            strncat(full_name, ".", 511 - strlen(full_name));
+            Token *member = expect(p, TOKEN_IDENTIFIER, "expected member name after '.'");
+            if (member && member->lexeme) {
+                strncat(full_name, member->lexeme, 511 - strlen(full_name));
+            }
+        }
+        
+        char *name = strdup(full_name);
+        
+        Type **args = NULL;
+        size_t arg_count = 0;
+        
+        // Check for generic arguments: Name<T1, T2>
+        if (match(p, TOKEN_LT)) {
+            do {
+                args = realloc(args, sizeof(Type*) * (arg_count + 1));
+                args[arg_count++] = parse_type(p);
+            } while (match(p, TOKEN_COMMA));
+            expect(p, TOKEN_GT, "expected '>' after generic arguments");
+        }
+        
+        type = type_create_struct(name, args, arg_count);
+        free(name);
     }
     else {
         parser_error(p, "expected type");
         return NULL;
     }
 
-    // Check for suffixes: array [] or pointer *
+    // Check for suffixes: pointer * or array [N] (postfix)
+    // Note: Prefix []T for slices and [N]T for arrays is also supported above
     while (true) {
         if (match(p, TOKEN_LBRACKET)) {
-             // Array
+            // Postfix array [N]
             if (p->current->type != TOKEN_INTEGER) {
                 parser_error(p, "expected array size");
                 return NULL;
@@ -220,13 +273,14 @@ static Type *parse_type(Parser *p) {
             
             type = type_create_array(type, size);
         } else if (match(p, TOKEN_STAR)) {
-             // Pointer
-             bool non_null = match(p, TOKEN_BANG);
-             type = type_create_pointer(type, non_null);
+            // Pointer
+            bool non_null = match(p, TOKEN_BANG);
+            type = type_create_pointer(type, non_null);
         } else {
-             break;
+            break;
         }
     }
+    
     return type;
 }
 
@@ -424,12 +478,35 @@ static ASTExpr *parse_postfix(Parser *p) {
             }
         }
         else if (match(p, TOKEN_LBRACKET)) {
-            // Array indexing
+            // Array indexing or slicing
             size_t line = p->previous->line;
             size_t column = p->previous->column;
-            ASTExpr *index = parse_expression(p);
-            expect(p, TOKEN_RBRACKET, "expected ']'");
-            expr = ast_create_index(expr, index, line, column);
+            
+            if (match(p, TOKEN_DOT_DOT)) {
+                // [..end] or [..]
+                ASTExpr *end = NULL;
+                if (!check(p, TOKEN_RBRACKET)) {
+                    end = parse_expression(p);
+                }
+                expect(p, TOKEN_RBRACKET, "expected ']'");
+                expr = ast_create_slice_expr(expr, NULL, end, line, column);
+            } else {
+                ASTExpr *start = parse_expression(p);
+                
+                if (match(p, TOKEN_DOT_DOT)) {
+                    // [start..end] or [start..]
+                    ASTExpr *end = NULL;
+                    if (!check(p, TOKEN_RBRACKET)) {
+                        end = parse_expression(p);
+                    }
+                    expect(p, TOKEN_RBRACKET, "expected ']'");
+                    expr = ast_create_slice_expr(expr, start, end, line, column);
+                } else {
+                    // [index]
+                    expect(p, TOKEN_RBRACKET, "expected ']'");
+                    expr = ast_create_index(expr, start, line, column);
+                }
+            }
         }
         else if (match(p, TOKEN_DOT)) {
             // Member access
@@ -469,6 +546,19 @@ static ASTExpr *parse_postfix(Parser *p) {
 }
 
 static ASTExpr *parse_primary(Parser *p) {
+    // Cast expression: cast<Type>(expr)
+    if (match(p, TOKEN_CAST)) {
+        size_t line = p->previous->line;
+        size_t column = p->previous->column;
+        expect(p, TOKEN_LT, "expected '<' after cast");
+        Type *target_type = parse_type(p);
+        expect(p, TOKEN_GT, "expected '>' after target type");
+        expect(p, TOKEN_LPAREN, "expected '(' after cast type");
+        ASTExpr *expr = parse_expression(p);
+        expect(p, TOKEN_RPAREN, "expected ')' after cast expression");
+        return ast_create_cast(target_type, expr, line, column);
+    }
+
     // Literals
     if (p->current->type == TOKEN_INTEGER || p->current->type == TOKEN_FLOAT ||
         p->current->type == TOKEN_STRING || p->current->type == TOKEN_TRUE ||
@@ -675,6 +765,56 @@ static ASTStmt *parse_while_stmt(Parser *p) {
     return ast_create_while(condition, body, line, column);
 }
 
+
+static ASTStmt *desugar_for_in(Type *elem_type, const char *elem_name, ASTExpr *collection, ASTStmt *user_body, size_t line, size_t column) {
+    ASTStmt **stmts = malloc(sizeof(ASTStmt*) * 2);
+    
+    // 1. var __slice = collection[..];
+    // Create [..] slice expression
+    ASTExpr *full_slice = ast_create_slice_expr(collection, NULL, NULL, line, column);
+    // Create expected slice type: []elem_type
+    Type *slice_type = type_create_slice(type_clone(elem_type));
+    stmts[0] = ast_create_var_decl(false, slice_type, "__slice", full_slice, line, column);
+    
+    // 2. Loop: for (var __i = 0; __i < __slice.len; __i = __i + 1)
+    
+    // Init: var i64 __i = 0;
+    Type *i64 = type_create_primitive(TOKEN_I64);
+    Token *zero_tok = token_create(TOKEN_INTEGER, "0", line, column);
+    zero_tok->value.int_value = 0;
+    ASTExpr *zero = ast_create_literal(zero_tok);
+    ASTStmt *init = ast_create_var_decl(false, i64, "__i", zero, line, column);
+    
+    // Cond: __i < __slice.len
+    ASTExpr *i_var = ast_create_variable("__i", line, column);
+    ASTExpr *slice_var = ast_create_variable("__slice", line, column);
+    ASTExpr *len_acc = ast_create_member(slice_var, "len", false, line, column);
+    ASTExpr *cond = ast_create_binary(TOKEN_LT, i_var, len_acc, line, column);
+    
+    // Inc: __i = __i + 1
+    ASTExpr *i_var2 = ast_create_variable("__i", line, column);
+    ASTExpr *i_var3 = ast_create_variable("__i", line, column);
+    Token *one_tok = token_create(TOKEN_INTEGER, "1", line, column);
+    one_tok->value.int_value = 1;
+    ASTExpr *one = ast_create_literal(one_tok);
+    ASTExpr *add = ast_create_binary(TOKEN_PLUS, i_var3, one, line, column);
+    ASTExpr *inc = ast_create_binary(TOKEN_EQ, i_var2, add, line, column);
+    
+    // Body: { var elem = __slice[__i]; user_body }
+    ASTStmt **body_stmts = malloc(sizeof(ASTStmt*) * 2);
+    // var elem = __slice[__i]
+    ASTExpr *slice_var_body = ast_create_variable("__slice", line, column);
+    ASTExpr *idx_var = ast_create_variable("__i", line, column);
+    ASTExpr *access = ast_create_index(slice_var_body, idx_var, line, column);
+    body_stmts[0] = ast_create_var_decl(false, type_clone(elem_type), elem_name, access, line, column);
+    body_stmts[1] = user_body;
+    ASTStmt *body_block = ast_create_block(body_stmts, 2, line, column);
+    
+    stmts[1] = ast_create_for(init, cond, inc, body_block, line, column);
+    
+    return ast_create_block(stmts, 2, line, column);
+}
+
 static ASTStmt *parse_for_stmt(Parser *p) {
     size_t line = p->previous->line;
     size_t column = p->previous->column;
@@ -683,10 +823,38 @@ static ASTStmt *parse_for_stmt(Parser *p) {
     
     // Initializer
     ASTStmt *initializer = NULL;
+    
+    // Check for variable declaration start
     if (match(p, TOKEN_VAR) || match(p, TOKEN_CONST)) {
         bool is_const = p->previous->type == TOKEN_CONST;
-        p->previous->type = is_const ? TOKEN_CONST : TOKEN_VAR;
-        initializer = parse_var_decl(p);
+        
+        // Manual var declaration parsing to detecting 'in'
+        // Type
+        Type *type = parse_type(p);
+        
+        // Variable Name
+        Token *name_tok = expect(p, TOKEN_IDENTIFIER, "expected variable name");
+        char var_name[256] = "";
+        if (name_tok && name_tok->lexeme) {
+            strncpy(var_name, name_tok->lexeme, 255);
+        }
+        
+        // Check for 'in' (For-In Loop)
+        if (match(p, TOKEN_IN)) {
+            ASTExpr *collection = parse_expression(p);
+            expect(p, TOKEN_RPAREN, "expected ')' after for-in");
+            ASTStmt *body = parse_statement(p);
+            return desugar_for_in(type, var_name, collection, body, line, column);
+        }
+        
+        // Standard variable declaration
+        ASTExpr *init_expr = NULL;
+        if (match(p, TOKEN_EQ)) {
+            init_expr = parse_expression(p);
+        }
+        expect(p, TOKEN_SEMICOLON, "expected ';'");
+        initializer = ast_create_var_decl(is_const, type, var_name, init_expr, line, column);
+        
     } else if (!match(p, TOKEN_SEMICOLON)) {
         ASTExpr *expr = parse_expression(p);
         expect(p, TOKEN_SEMICOLON, "expected ';'");
@@ -709,8 +877,6 @@ static ASTStmt *parse_for_stmt(Parser *p) {
     
     ASTStmt *body = parse_statement(p);
     
-    // For loop parsing ... (existing code)
-    // ...
     return ast_create_for(initializer, condition, increment, body, line, column);
 }
 
@@ -1039,6 +1205,21 @@ static ASTDecl *parse_struct(Parser *p, bool is_public, bool is_packed) {
     Token *name_token = expect(p, TOKEN_IDENTIFIER, "expected struct name");
     char *struct_name = name_token ? strdup(name_token->lexeme) : strdup("");
     
+    // Generic type parameters
+    char **type_params = NULL;
+    size_t type_param_count = 0;
+    
+    if (match(p, TOKEN_LT)) {
+        do {
+            Token *param_token = expect(p, TOKEN_IDENTIFIER, "expected type parameter name");
+            if (param_token) {
+                type_params = realloc(type_params, sizeof(char*) * (type_param_count + 1));
+                type_params[type_param_count++] = strdup(param_token->lexeme);
+            }
+        } while (match(p, TOKEN_COMMA));
+        expect(p, TOKEN_GT, "expected '>' after type parameters");
+    }
+    
     expect(p, TOKEN_LBRACE, "expected '{' after struct name");
     
     // Fields
@@ -1061,7 +1242,7 @@ static ASTDecl *parse_struct(Parser *p, bool is_public, bool is_packed) {
     expect(p, TOKEN_RBRACE, "expected '}' after struct fields");
     expect(p, TOKEN_SEMICOLON, "expected ';' after struct declaration");
     
-    return ast_create_struct(struct_name, fields, field_count, is_public, is_packed, line, column);
+    return ast_create_struct(struct_name, type_params, type_param_count, fields, field_count, is_public, is_packed, line, column);
 }
 
 static ASTDecl *parse_enum(Parser *p, bool is_public) {
@@ -1070,6 +1251,21 @@ static ASTDecl *parse_enum(Parser *p, bool is_public) {
     
     Token *name_token = expect(p, TOKEN_IDENTIFIER, "expected enum name");
     char *enum_name = name_token ? strdup(name_token->lexeme) : strdup("");
+    
+    // Generic type parameters
+    char **type_params = NULL;
+    size_t type_param_count = 0;
+    
+    if (match(p, TOKEN_LT)) {
+        do {
+            Token *param_token = expect(p, TOKEN_IDENTIFIER, "expected type parameter name");
+            if (param_token) {
+                type_params = realloc(type_params, sizeof(char*) * (type_param_count + 1));
+                type_params[type_param_count++] = strdup(param_token->lexeme);
+            }
+        } while (match(p, TOKEN_COMMA));
+        expect(p, TOKEN_GT, "expected '>' after type parameters");
+    }
     
     expect(p, TOKEN_LBRACE, "expected '{' after enum name");
     
@@ -1090,7 +1286,7 @@ static ASTDecl *parse_enum(Parser *p, bool is_public) {
     expect(p, TOKEN_RBRACE, "expected '}' after enum variants");
     expect(p, TOKEN_SEMICOLON, "expected ';' after enum declaration");
     
-    return ast_create_enum(enum_name, variants, variant_count, is_public, line, column);
+    return ast_create_enum(enum_name, type_params, type_param_count, variants, variant_count, is_public, line, column);
 }
 
 // Main parse function

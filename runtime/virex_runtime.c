@@ -4,6 +4,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+
+// ============================================================================
+// std::math - Mathematics
+// ============================================================================
+
+double virex_math_sqrt(double x) { return sqrt(x); }
+double virex_math_pow(double x, double y) { return pow(x, y); }
+double virex_math_sin(double x) { return sin(x); }
+double virex_math_cos(double x) { return cos(x); }
+double virex_math_tan(double x) { return tan(x); }
+double virex_math_log(double x) { return log(x); }
+double virex_math_exp(double x) { return exp(x); }
+double virex_math_fabs(double x) { return fabs(x); }
+double virex_math_floor(double x) { return floor(x); }
+double virex_math_ceil(double x) { return ceil(x); }
 
 // ============================================================================
 // std::mem - Memory Management
@@ -41,31 +57,27 @@ void virex_print_i32(int value) {
     printf("%d", value);
 }
 
-// Print integer with newline
-void virex_println_i32(int value) {
-    printf("%d\n", value);
+// Print long long integer
+void virex_print_i64(long long value) {
+    printf("%lld", value);
 }
+
 
 // Print boolean
 void virex_print_bool(int value) {
     printf("%s", value ? "true" : "false");
 }
 
-// Print boolean with newline
-void virex_println_bool(int value) {
-    printf("%s\n", value ? "true" : "false");
-}
 
 // Print string (cstring)
 void virex_print_str(const char* str) {
     if (str) printf("%s", str);
 }
 
-// Print string with newline
-void virex_println_str(const char* str) {
-    if (str) printf("%s\n", str);
-    else printf("\n");
+void virex_print_f64(double value) {
+    printf("%g", value);
 }
+
 
 // ============================================================================
 // std::os - Operating System

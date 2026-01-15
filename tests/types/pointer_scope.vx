@@ -15,13 +15,13 @@ func get_ptr_to_var(i32* x) -> i32* {
 }
 
 func main() -> i32 {
-    io.println("Testing pointer scopes...");
+    io.print("Testing pointer scopes..."); io.print("\n");
 
     var i32 x = 10;
     modify_ptr(&x);
     
     if (x != 11) {
-         io.println("FAIL: pointer modification failed");
+         io.print("FAIL: pointer modification failed"); io.print("\n");
          return 1;
     }
     
@@ -30,17 +30,17 @@ func main() -> i32 {
     var i32* p = get_ptr_to_var(&val);
     unsafe {
         if (*p != 50) {
-            io.println("FAIL: pointer return mismatch");
+            io.print("FAIL: pointer return mismatch"); io.print("\n");
             return 1;
         }
         *p = 100;
     }
     
     if (val != 100) {
-        io.println("FAIL: pointer modification via returned pointer failed");
+        io.print("FAIL: pointer modification via returned pointer failed"); io.print("\n");
         return 1;
     }
 
-    io.println("PASS: Pointer scope tests passed");
+    io.print("PASS: Pointer scope tests passed"); io.print("\n");
     return 0;
 }

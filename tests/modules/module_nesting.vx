@@ -6,16 +6,16 @@ import "deep/very_deep_helper.vx" as deep;
 
 func main() -> i32 {
     io.print("Inner val: ");
-    io.println(inner.get_val());
+    io.print(inner.get_val()); io.print("\n");
     
     io.print("Deep val: ");
-    io.println(deep.deep_val);
+    io.print(deep.deep_val); io.print("\n");
     
     if (inner.get_val() == 42 && deep.deep_val == 100) {
-        io.println("Module nesting test passed!");
+        io.print("Module nesting test passed!"); io.print("\n");
         return 0;
     }
     
-    io.println("Module nesting test failed!");
+    io.print("Module nesting test failed!"); io.print("\n");
     return 1;
 }

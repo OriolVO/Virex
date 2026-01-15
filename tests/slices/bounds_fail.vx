@@ -1,0 +1,13 @@
+import "io.vx";
+
+func main() -> i32 {
+    var [5]i32 arr;
+    var []i32 slice = arr[0..3]; // len 3
+    
+    io.print("Trying slice[3] (out of bounds of slice len 3)...\n");
+    // Indices 0, 1, 2 are valid. 3 is out of bounds.
+    var i32 x = slice[3];
+    
+    io.print("Should not be reached!\n");
+    return 0;
+}

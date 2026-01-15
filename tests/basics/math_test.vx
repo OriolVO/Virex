@@ -1,0 +1,47 @@
+import "io.vx";
+import "math.vx";
+
+func main() -> i32 {
+    io.print("Testing std::math:\n");
+
+    var f64 s = math.sqrt(16.0);
+    io.print("sqrt(16.0) = "); io.print(s); io.print("\n");
+    if (s != 4.0) return 1;
+
+    var f64 p = math.pow(2.0, 3.0);
+    io.print("pow(2.0, 3.0) = "); io.print(p); io.print("\n");
+    if (p != 8.0) return 2;
+
+    var f64 a = math.fabs(-5.5);
+    io.print("fabs(-5.5) = "); io.print(a); io.print("\n");
+    if (a != 5.5) return 3;
+
+    var f64 f = math.floor(3.9);
+    io.print("floor(3.9) = "); io.print(f); io.print("\n");
+    if (f != 3.0) return 4;
+
+    var f64 c = math.ceil(3.1);
+    io.print("ceil(3.1) = "); io.print(c); io.print("\n");
+    if (c != 4.0) return 5;
+
+    var f64 pi = 3.14159265;
+    var f64 sn = math.sin(pi / 2.0);
+    io.print("sin(pi/2) = "); io.print(sn); io.print("\n");
+    // Using approx comparison for floats
+    if (math.fabs(sn - 1.0) > 0.0001) return 6;
+
+    var f64 cs = math.cos(0.0);
+    io.print("cos(0) = "); io.print(cs); io.print("\n");
+    if (cs != 1.0) return 7;
+
+    var f64 ex = math.exp(1.0);
+    io.print("exp(1.0) = "); io.print(ex); io.print("\n");
+    if (math.fabs(ex - 2.71828) > 0.001) return 8;
+
+    var f64 lg = math.log(ex);
+    io.print("log(e) = "); io.print(lg); io.print("\n");
+    if (math.fabs(lg - 1.0) > 0.0001) return 9;
+
+    io.print("std::math tests passed!\n");
+    return 0;
+}

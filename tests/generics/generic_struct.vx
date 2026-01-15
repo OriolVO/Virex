@@ -1,0 +1,36 @@
+import "io.vx";
+
+// Generic struct with single type parameter
+struct Pair<T, U> {
+    T first;
+    U second;
+};
+
+// Generic enum
+enum Option<T> {
+    Some,
+    None
+};
+
+func main() -> i32 {
+    io.print("Testing Generic Structs and Enums:"); io.print("\n");
+    
+    // Instantiate generic struct
+    var Pair<i32, i64> p;
+    p.first = 42;
+    p.second = 100;
+    
+    io.print("Pair.first: "); io.print(p.first); io.print("\n");
+    io.print("Pair.second: "); io.print(p.second); io.print("\n");
+    
+    // Test with different types
+    var Pair<bool, i32> p2;
+    p2.first = true;
+    p2.second = 999;
+    
+    io.print("Pair2.first: "); io.print(p2.first); io.print("\n");
+    io.print("Pair2.second: "); io.print(p2.second); io.print("\n");
+    
+    io.print("Generic struct test complete."); io.print("\n");
+    return 0;
+}

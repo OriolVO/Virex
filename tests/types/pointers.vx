@@ -1,15 +1,15 @@
 import "io.vx";
 
 func main() -> i32 {
-    io.println("Testing Pointers:");
+    io.print("Testing Pointers:"); io.print("\n");
     
     var i32 x = 42;
     var i32*! ptr = &x;
     
-    io.print("Value of x: "); io.println(x);
+    io.print("Value of x: "); io.print(x); io.print("\n");
     // Dereference test (if supported by codegen)
     var i32 deref = *ptr;
-    io.print("Dereferenced: "); io.println(deref);
+    io.print("Dereferenced: "); io.print(deref); io.print("\n");
     
     return 0;
 }
