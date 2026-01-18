@@ -12,12 +12,23 @@ PASSED=0
 FAILED=0
 TOTAL=0
 
-echo -e "${BOLD}Running Virex Test Suite...${NC}\n"
+# Backend selection (default: c)
+BACKEND="c"
+if [ "$1" == "--backend=llvm" ]; then
+    BACKEND="llvm"
+    shift
+fi
+
+echo -e "${BOLD}Running Virex Test Suite (backend: $BACKEND)...${NC}\n"
 
 # Rebuild compiler
 echo "Rebuilding compiler..."
 make clean > /dev/null
-make > /dev/null
+if [ "$BACKEND" == "llvm" ]; then
+    make USE_LLVM=1 > /dev/null
+else
+    make > /dev/null
+fi
 if [ $? -ne 0 ]; then
     echo -e "${RED}Compiler build failed!${NC}"
     exit 1
@@ -67,14 +78,14 @@ for test in $TEST_FILES; do
     bin_out=$(echo "$test_name" | cut -f 1 -d '.')
     if [[ "$test_name" == "ffi_structs.vx" ]]; then
        gcc -c tests/ffi/struct_helper.c -o struct_helper.o
-       ./virexc build "$test" -o "$bin_out" struct_helper.o > /dev/null 2>&1
+       ./virexc build "$test" -o "$bin_out" --backend=$BACKEND struct_helper.o > /dev/null 2>&1
        rm -f struct_helper.o
     elif [[ "$test_name" == "packed_struct.vx" ]]; then
        gcc -c tests/ffi/packed_helper.c -o packed_helper.o
-       ./virexc build "$test" -o "$bin_out" packed_helper.o > /dev/null 2>&1
+       ./virexc build "$test" -o "$bin_out" --backend=$BACKEND packed_helper.o > /dev/null 2>&1
        rm -f packed_helper.o
     else
-       ./virexc build "$test" -o "$bin_out" > /dev/null 2>&1
+       ./virexc build "$test" -o "$bin_out" --backend=$BACKEND > /dev/null 2>&1
     fi
     if [ $? -ne 0 ]; then
         # Check if it was supposed to fail

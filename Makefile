@@ -5,6 +5,31 @@ CC = gcc
 CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Iinclude -Ilib
 LDFLAGS = 
 
+# LLVM configuration (optional)
+# Set USE_LLVM=1 to enable LLVM backend
+USE_LLVM ?= 0
+
+ifeq ($(USE_LLVM),1)
+    # Check if llvm-config is available
+    LLVM_CONFIG := $(shell which llvm-config 2>/dev/null)
+    ifeq ($(LLVM_CONFIG),)
+        $(error LLVM requested but llvm-config not found in PATH)
+    endif
+    
+    # Get LLVM flags
+    LLVM_CFLAGS := $(shell $(LLVM_CONFIG) --cflags)
+    LLVM_LDFLAGS := $(shell $(LLVM_CONFIG) --ldflags --libs core target)
+    
+    # Add LLVM flags
+    CFLAGS += $(LLVM_CFLAGS) -DHAVE_LLVM
+    LDFLAGS += $(LLVM_LDFLAGS)
+    
+    $(info LLVM backend enabled)
+    $(info LLVM version: $(shell $(LLVM_CONFIG) --version))
+else
+    $(info LLVM backend disabled. Use 'make USE_LLVM=1' to enable)
+endif
+
 # Directories
 SRC_DIR = src
 BUILD_DIR = build
@@ -56,12 +81,16 @@ debug: clean all
 release: CFLAGS += -O2 -DNDEBUG
 release: clean all
 
+# LLVM-enabled build
+llvm: USE_LLVM=1
+llvm: clean all
+
 # Install (placeholder)
 install: $(TARGET)
 	@echo "Install not yet implemented"
 
 # Phony targets
-.PHONY: all clean test debug release install
+.PHONY: all clean test debug release install llvm
 
 # Show help
 help:
@@ -73,4 +102,8 @@ help:
 	@echo "  test     - Run tests"
 	@echo "  debug    - Build with debug symbols"
 	@echo "  release  - Build optimized release version"
+	@echo "  llvm     - Build with LLVM backend support"
 	@echo "  help     - Show this help message"
+	@echo ""
+	@echo "Variables:"
+	@echo "  USE_LLVM=1  - Enable LLVM backend (requires llvm-config)"

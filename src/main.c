@@ -17,6 +17,7 @@
 #include "../include/irgen.h"
 #include "../include/iropt.h"
 #include "../include/codegen.h"
+#include "../include/llvm_codegen.h"
 #include "../include/compiler.h"
 
 void print_version(void) {
@@ -30,6 +31,7 @@ void print_help(void) {
     printf("  build <file> [flags]  Compile a Virex source file\n");
     printf("                        (GCC flags like -o, -l, -I are passed through)\n\n");
     printf("Options:\n");
+    printf("  --backend=<backend>   Select backend: 'c' (default) or 'llvm'\n");
     printf("  --strict-unsafe       Treat checks like unnecessary unsafe blocks as errors\n");
     printf("  --version             Print version information\n");
     printf("  --help                Print this help message\n");
@@ -37,6 +39,7 @@ void print_help(void) {
     printf("Examples:\n");
     printf("  virex build main.vx\n");
     printf("  virex build main.vx -o build/app\n");
+    printf("  virex build main.vx --backend=llvm\n");
 }
 
 
@@ -85,11 +88,19 @@ static int compile_file(const char *filename, int extra_argc, char **extra_argv)
     if (dot) *dot = '\0';
     
     bool user_output_name = false;
+    const char *backend = "c"; // Default to C backend
     
     // Parse Virex-specific flags and check for -o
     for (int i = 0; i < extra_argc; i++) {
         if (strcmp(extra_argv[i], "--strict-unsafe") == 0) {
             project->strict_unsafe_mode = true;
+        } else if (strncmp(extra_argv[i], "--backend=", 10) == 0) {
+            backend = extra_argv[i] + 10;
+            if (strcmp(backend, "c") != 0 && strcmp(backend, "llvm") != 0) {
+                fprintf(stderr, "Error: Unknown backend '%s'. Use 'c' or 'llvm'\n", backend);
+                project_free(project);
+                return 1;
+            }
         } else if (strcmp(extra_argv[i], "-o") == 0 && i + 1 < extra_argc) {
             strncpy(exe_name, extra_argv[i+1], 255);
             user_output_name = true;
@@ -117,6 +128,39 @@ static int compile_file(const char *filename, int extra_argc, char **extra_argv)
         project_free(project);
         return 1;
     }
+    
+    // Backend selection
+    if (strcmp(backend, "llvm") == 0) {
+#ifdef HAVE_LLVM
+        printf("✓ Using LLVM backend\n");
+        LLVMCodeGenerator *llvm_gen = llvm_codegen_create();
+        if (!llvm_gen) {
+            fprintf(stderr, "Error: Failed to create LLVM code generator\n");
+            project_free(project);
+            return 1;
+        }
+        
+        // For now, LLVM backend just verifies and prints IR
+        int result = llvm_codegen_generate(llvm_gen, project, exe_name);
+        llvm_codegen_free(llvm_gen);
+        project_free(project);
+        
+        if (result != 0) {
+            fprintf(stderr, "✗ LLVM code generation failed\n");
+            return 1;
+        }
+        
+        printf("✓ LLVM backend completed (full implementation pending)\n");
+        return 0;
+#else
+        fprintf(stderr, "Error: LLVM backend not available. Rebuild with 'make llvm'\n");
+        project_free(project);
+        return 1;
+#endif
+    }
+    
+    // C backend (default)
+    printf("✓ Using C backend\n");
     
     char output_filename[256];
     // Write C file to same dir as output exe or default
@@ -146,6 +190,7 @@ static int compile_file(const char *filename, int extra_argc, char **extra_argv)
     for (int i = 0; i < extra_argc; i++) {
         // Skip Virex-specific flags
         if (strcmp(extra_argv[i], "--strict-unsafe") == 0) continue;
+        if (strncmp(extra_argv[i], "--backend=", 10) == 0) continue;
         
         // Skip -o and its argument if we handled it
         if (strcmp(extra_argv[i], "-o") == 0) {
