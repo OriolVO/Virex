@@ -42,4 +42,15 @@ Type *instantiate_type(MonomorphContext *ctx, Type *type);
 ASTDecl *instantiate_generic_struct(MonomorphContext *ctx, ASTDecl *generic_struct, Type **concrete_types, size_t type_count);
 ASTDecl *instantiate_generic_enum(MonomorphContext *ctx, ASTDecl *generic_enum, Type **concrete_types, size_t type_count);
 
+// Create a monomorphized symbol for a generic type (for use during semantic analysis)
+// This is separate from AST-level instantiation and creates Symbol* for symbol table
+struct Symbol;  // Forward declaration
+struct Symbol *monomorph_create_type_symbol(
+    const char *mangled_name,
+    struct Symbol *generic_symbol,
+    Type **type_args,
+    size_t type_arg_count,
+    TypeKind kind
+);
+
 #endif // MONOMORPH_H

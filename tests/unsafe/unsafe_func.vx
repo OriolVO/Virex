@@ -1,0 +1,30 @@
+// Test unsafe function feature
+
+unsafe func dangerous() {
+    // This function is marked unsafe but doesn't actually do anything dangerous
+    // In a real scenario, this would contain unsafe operations
+}
+
+// This function intentionally errors - uncomment to test error reporting
+// func safe_caller() {
+//     // This should error: calling unsafe function from safe context
+//     dangerous();
+// }
+
+func safe_with_unsafe_block() {
+    unsafe {
+        dangerous();  // OK: inside unsafe block
+    }
+}
+
+unsafe func calls_unsafe() {
+    dangerous();  // OK: unsafe function calling unsafe function
+}
+
+func main() -> i32 {
+    safe_with_unsafe_block();
+    unsafe {
+        calls_unsafe();  // OK: inside unsafe block
+    }
+    return 0;
+}

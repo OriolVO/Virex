@@ -1,0 +1,10 @@
+func main() -> i32 {
+    var i32 x = "hello";      // Type mismatch
+    var i32 y = 10
+    
+    if (x) {                // Condition must be bool
+        print(unknown_var); // Unknown symbol
+    }
+    
+    return 0;
+}

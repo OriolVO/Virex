@@ -16,7 +16,7 @@ SRCS = $(wildcard $(SRC_DIR)/*.c)
 OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
 
 # Target executable
-TARGET = virex
+TARGET = virexc
 
 # Default target
 all: $(TARGET)

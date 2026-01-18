@@ -1,0 +1,15 @@
+func main() -> i32 {
+    var i32 value = 10;
+    
+    // 1. Safe Dereference (Should be allowed, currently might error or be treated as nullable)
+    var i32*! non_null_ptr = &value;
+    var i32 x = *non_null_ptr; // Should work without unsafe
+    
+    // 2. Null Assignment (Should be forbidden)
+    non_null_ptr = null; // Should error
+    
+    // 3. Initialization (Should require init)
+    var i32*! uninit_ptr; // Should error
+    
+    return x;
+}

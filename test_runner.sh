@@ -24,6 +24,36 @@ if [ $? -ne 0 ]; then
 fi
 echo -e "${GREEN}Compiler ready.${NC}\n"
 
+# Expected compilation failures (should fail to compile)
+EXPECTED_COMPILE_FAILURES=(
+    "visibility.vx"
+    "circular_a.vx"
+    "circular_b.vx"
+    "escape_local.vx"
+    "unsafe_ffi.vx"
+    "scope_escape.vx"
+    "missing_return.vx"
+    "missing_return_if.vx"
+    "unreachable.vx"
+    "invalid_break.vx"
+    "match_missing.vx"
+    "const_reassignment.vx"
+    "type_mismatch.vx"
+    "arg_count_mismatch.vx"
+    "enhanced_error_test.vx"
+    "strict_ctypes.vx"
+    "recursion_check.vx"
+    "error_suggestion.vx"
+)
+
+# Expected runtime failures (should compile but exit with non-zero)
+EXPECTED_RUNTIME_FAILURES=(
+    "fail.vx"
+    "unwrap_test.vx"
+    "bounds_fail.vx"
+    "slice_fail.vx"
+)
+
 # Find all .vx files in tests/ (excluding helper files)
 TEST_FILES=$(find tests -name "*.vx" | grep -v "helper" | grep -v "lib.vx")
 
@@ -37,18 +67,18 @@ for test in $TEST_FILES; do
     bin_out=$(echo "$test_name" | cut -f 1 -d '.')
     if [[ "$test_name" == "ffi_structs.vx" ]]; then
        gcc -c tests/ffi/struct_helper.c -o struct_helper.o
-       ./virex build "$test" -o "$bin_out" struct_helper.o > /dev/null 2>&1
+       ./virexc build "$test" -o "$bin_out" struct_helper.o > /dev/null 2>&1
        rm -f struct_helper.o
     elif [[ "$test_name" == "packed_struct.vx" ]]; then
        gcc -c tests/ffi/packed_helper.c -o packed_helper.o
-       ./virex build "$test" -o "$bin_out" packed_helper.o > /dev/null 2>&1
+       ./virexc build "$test" -o "$bin_out" packed_helper.o > /dev/null 2>&1
        rm -f packed_helper.o
     else
-       ./virex build "$test" -o "$bin_out" > /dev/null 2>&1
+       ./virexc build "$test" -o "$bin_out" > /dev/null 2>&1
     fi
     if [ $? -ne 0 ]; then
         # Check if it was supposed to fail
-        if [[ "$test_name" == "visibility.vx" ]] || [[ "$test_name" == "circular_a.vx" ]] || [[ "$test_name" == "circular_b.vx" ]] || [[ "$test_name" == "escape_local.vx" ]] || [[ "$test_name" == "unsafe_ffi.vx" ]] || [[ "$test_name" == "scope_escape.vx" ]] || [[ "$test_name" == "missing_return.vx" ]] || [[ "$test_name" == "missing_return_if.vx" ]] || [[ "$test_name" == "unreachable.vx" ]] || [[ "$test_name" == "invalid_break.vx" ]] || [[ "$test_name" == "match_missing.vx" ]] || [[ "$test_name" == "const_reassignment.vx" ]] || [[ "$test_name" == "type_mismatch.vx" ]] || [[ "$test_name" == "arg_count_mismatch.vx" ]] || [[ "$test_name" == "enhanced_error_test.vx" ]] || [[ "$test_name" == "strict_ctypes.vx" ]]; then
+        if [[ "$test_name" == "visibility.vx" ]] || [[ "$test_name" == "circular_a.vx" ]] || [[ "$test_name" == "circular_b.vx" ]] || [[ "$test_name" == "escape_local.vx" ]] || [[ "$test_name" == "unsafe_ffi.vx" ]] || [[ "$test_name" == "scope_escape.vx" ]] || [[ "$test_name" == "missing_return.vx" ]] || [[ "$test_name" == "missing_return_if.vx" ]] || [[ "$test_name" == "unreachable.vx" ]] || [[ "$test_name" == "invalid_break.vx" ]] || [[ "$test_name" == "match_missing.vx" ]] || [[ "$test_name" == "const_reassignment.vx" ]] || [[ "$test_name" == "type_mismatch.vx" ]] || [[ "$test_name" == "arg_count_mismatch.vx" ]] || [[ "$test_name" == "enhanced_error_test.vx" ]] || [[ "$test_name" == "strict_ctypes.vx" ]] || [[ "$test_name" == "recursion_check.vx" ]] || [[ "$test_name" == "error_suggestion.vx" ]]; then
             echo -e "${GREEN}PASSED${NC} (Expected failure)"
             PASSED=$((PASSED + 1))
         else

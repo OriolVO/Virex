@@ -31,7 +31,7 @@ static ASTStmt *parse_unsafe_stmt(Parser *p);
 
 static ASTDecl *parse_declaration(Parser *p);
 static ASTDecl *parse_type_alias(Parser *p, bool is_public);
-static ASTDecl *parse_function(Parser *p, bool is_public);
+static ASTDecl *parse_function(Parser *p, bool is_public, bool is_unsafe);
 static ASTDecl *parse_struct(Parser *p, bool is_public, bool is_packed);
 static ASTDecl *parse_enum(Parser *p, bool is_public);
 static ASTDecl *parse_extern(Parser *p, bool is_public);
@@ -111,7 +111,7 @@ static void parser_error(Parser *p, const char *message) {
     p->panic_mode = true;
     p->had_error = true;
     
-    error_report_ex(LEVEL_ERROR, NULL, p->lexer->filename, p->current->line, p->current->column, message, NULL);
+    error_report_ex(LEVEL_ERROR, NULL, p->lexer->filename, p->current->line, p->current->column, message, NULL, NULL);
 }
 
 static void synchronize(Parser *p) {
@@ -1043,8 +1043,15 @@ static ASTDecl *parse_declaration(Parser *p) {
         return parse_extern(p, is_public);
     }
     
+    bool is_unsafe = match(p, TOKEN_UNSAFE);
+    
     if (match(p, TOKEN_FUNC)) {
-        return parse_function(p, is_public);
+        return parse_function(p, is_public, is_unsafe);
+    }
+    
+    if (is_unsafe) {
+        parser_error(p, "'unsafe' modifier can only be used with functions");
+        return NULL;
     }
     
     bool is_packed = match(p, TOKEN_PACKED);
@@ -1067,7 +1074,7 @@ static ASTDecl *parse_declaration(Parser *p) {
     return NULL;
 }
 
-static ASTDecl *parse_function(Parser *p, bool is_public) {
+static ASTDecl *parse_function(Parser *p, bool is_public, bool is_unsafe) {
     size_t line = p->previous->line;
     size_t column = p->previous->column;
     
@@ -1121,7 +1128,7 @@ static ASTDecl *parse_function(Parser *p, bool is_public) {
     expect(p, TOKEN_LBRACE, "expected '{' before function body");
     ASTStmt *body = parse_block(p);
     
-    return ast_create_function(func_name, type_params, type_param_count, params, param_count, return_type, body, is_public, false, false, line, column);
+    return ast_create_function(func_name, type_params, type_param_count, params, param_count, return_type, body, is_public, false, false, is_unsafe, line, column);
 }
 
 static ASTDecl *parse_extern(Parser *p, bool is_public) {
@@ -1187,7 +1194,7 @@ static ASTDecl *parse_extern(Parser *p, bool is_public) {
     
     expect(p, TOKEN_SEMICOLON, "expected ';' after extern declaration");
     
-    return ast_create_function(func_name, type_params, type_param_count, params, param_count, return_type, NULL, is_public, true, is_variadic, line, column);
+    return ast_create_function(func_name, type_params, type_param_count, params, param_count, return_type, NULL, is_public, true, is_variadic, false, line, column);
 }
 
 static ASTDecl *parse_struct(Parser *p, bool is_public, bool is_packed) {

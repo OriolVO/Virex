@@ -248,6 +248,7 @@ typedef struct {
     bool is_variadic; // For C interop (printf, etc.)
     bool is_public;
     bool is_extern;  // True for extern functions
+    bool is_unsafe;  // True for unsafe functions
 } ASTFunctionDecl;
 
 // Struct field
@@ -371,7 +372,7 @@ ASTStmt *ast_create_unsafe(ASTStmt *body, size_t line, size_t column);
 ASTStmt *ast_create_break(size_t line, size_t column);
 ASTStmt *ast_create_continue(size_t line, size_t column);
 
-ASTDecl *ast_create_function(const char *name, char **type_params, size_t type_param_count, ASTParam *params, size_t param_count, Type *ret_type, ASTStmt *body, bool is_public, bool is_extern, bool is_variadic, size_t line, size_t column);
+ASTDecl *ast_create_function(const char *name, char **type_params, size_t type_param_count, ASTParam *params, size_t param_count, Type *ret_type, ASTStmt *body, bool is_public, bool is_extern, bool is_variadic, bool is_unsafe, size_t line, size_t column);
 ASTDecl *ast_create_struct(const char *name, char **type_params, size_t type_param_count, ASTField *fields, size_t field_count, bool is_public, bool is_packed, size_t line, size_t column);
 ASTDecl *ast_create_enum(const char *name, char **type_params, size_t type_param_count, ASTEnumVariant *variants, size_t variant_count, bool is_public, size_t line, size_t column);
 ASTDecl *ast_create_module(const char *module_name, size_t line, size_t column);

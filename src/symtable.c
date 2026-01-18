@@ -47,7 +47,7 @@ void symbol_free(Symbol *symbol) {
         free(symbol->fields);
     }
     // Note: module_table is owned by the Module/Project, don't free here
-    // Note: type is owned by the AST, don't free here
+    // Note: type is owned by the AST or shared, don't free here to avoid double-free
     free(symbol);
 }
 

@@ -1,0 +1,27 @@
+
+// Tests if unsafe operations are caught when nested in other expressions
+
+func take_val(i32 x) {}
+
+func main() {
+    var i32* ptr = null;
+    
+    // Direct dereference (should error)
+    var i32 x = *ptr; 
+    
+    // Nested in call (should error)
+    take_val(*ptr);
+    
+    // Nested in binary op (should error)
+    var i32 y = 1 + *ptr;
+    
+    // Nested in cast - removed due to syntax uncertainty
+    // var i64 z = (*ptr) as i64;
+    
+    unsafe {
+        // These should all be fine
+        var i32 a = *ptr;
+        take_val(*ptr);
+        var i32 b = 1 + *ptr;
+    }
+}

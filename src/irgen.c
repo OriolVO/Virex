@@ -3,11 +3,55 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../include/irgen.h"
+#include "../include/compiler.h"
 
+// Forward declarations
+static char *type_to_c_string(Type *type);
+static char *type_to_c_string_with_symtable(SymbolTable *symtable, Type *type);
 
-// Convert Virex type to C type string
-static char *type_to_c_string(Type *type) {
+// Resolve type aliases to their underlying types
+static Type *resolve_type_alias_irgen(SymbolTable *symtable, Type *type) {
+    if (!type || !symtable) return type;
+    
+    // Only named types (STRUCT/ENUM) can be aliases
+    if (type->kind != TYPE_STRUCT && type->kind != TYPE_ENUM) {
+        return type;
+    }
+    
+    const char *type_name = type->data.struct_enum.name;
+    if (!type_name) return type;
+    
+    // First try current module's symbol table
+    Symbol *sym = symtable_lookup(symtable, type_name);
+    if (sym && sym->kind == SYMBOL_TYPE && sym->is_type_alias && sym->type) {
+        // Recursively resolve in case of chained aliases
+        return resolve_type_alias_irgen(symtable, sym->type);
+    }
+    
+    // If not found, search in imported modules
+    // The symtable has MODULE symbols that point to other symbol tables
+    for (size_t i = 0; i < symtable->global_scope->symbol_count; i++) {
+        Symbol *mod_sym = symtable->global_scope->symbols[i];
+        if (mod_sym && mod_sym->kind == SYMBOL_MODULE && mod_sym->module_table) {
+            Symbol *imported_sym = symtable_lookup(mod_sym->module_table, type_name);
+            if (imported_sym && imported_sym->kind == SYMBOL_TYPE && imported_sym->is_type_alias && imported_sym->type) {
+                // Recursively resolve in case of chained aliases
+                return resolve_type_alias_irgen(mod_sym->module_table, imported_sym->type);
+            }
+        }
+    }
+    
+    return type;
+}
+
+// Convert Virex type to C type string (with alias resolution)
+static char *type_to_c_string_with_symtable(SymbolTable *symtable, Type *type) {
     if (!type) return strdup("long");
+    
+    // Resolve any type aliases first
+    if (symtable) {
+        type = resolve_type_alias_irgen(symtable, type);
+    }
     
     switch (type->kind) {
         case TYPE_PRIMITIVE:
@@ -86,6 +130,11 @@ static char *type_to_c_string(Type *type) {
             
         default: return strdup("long");
     }
+}
+
+// Wrapper for backward compatibility
+static char *type_to_c_string(Type *type) {
+    return type_to_c_string_with_symtable(NULL, type);
 }
 
 typedef struct IRScope {
@@ -1226,13 +1275,13 @@ static void lower_function(IRGenerator *gen, ASTDecl *decl) {
             
             // Update the stored param name in IR function signature
             ir_func->params[i] = strdup(unique_param_name);
-            ir_func->param_types[i] = type_to_c_string(decl->data.function.params[i].param_type);
+            ir_func->param_types[i] = type_to_c_string_with_symtable(gen->symtable, decl->data.function.params[i].param_type);
         }
     }
     
     // Set return type
     if (decl->data.function.return_type) {
-        ir_func->return_type = type_to_c_string(decl->data.function.return_type);
+        ir_func->return_type = type_to_c_string_with_symtable(gen->symtable, decl->data.function.return_type);
     } else {
         ir_func->return_type = strdup("void");
     }

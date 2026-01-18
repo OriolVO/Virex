@@ -241,7 +241,7 @@ ASTStmt *ast_create_continue(size_t line, size_t column) {
 
 // Declaration creation functions
 
-ASTDecl *ast_create_function(const char *name, char **type_params, size_t type_param_count, ASTParam *params, size_t param_count, Type *ret_type, ASTStmt *body, bool is_public, bool is_extern, bool is_variadic, size_t line, size_t column) {
+ASTDecl *ast_create_function(const char *name, char **type_params, size_t type_param_count, ASTParam *params, size_t param_count, Type *ret_type, ASTStmt *body, bool is_public, bool is_extern, bool is_variadic, bool is_unsafe, size_t line, size_t column) {
     ASTDecl *decl = malloc(sizeof(ASTDecl));
     decl->type = AST_FUNCTION_DECL;
     decl->line = line;
@@ -256,6 +256,7 @@ ASTDecl *ast_create_function(const char *name, char **type_params, size_t type_p
     decl->data.function.is_public = is_public;
     decl->data.function.is_extern = is_extern;
     decl->data.function.is_variadic = is_variadic;
+    decl->data.function.is_unsafe = is_unsafe;
     return decl;
 }
 

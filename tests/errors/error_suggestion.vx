@@ -1,0 +1,17 @@
+module "test_error_suggestion";
+
+import "io.vx";
+
+func main() -> i32 {
+    var i32 count;
+    var i32 total;
+    count = 10;
+    total = 20;
+    
+    // Typo: "cont" instead of "count" - should suggest "count"
+    var i32 result;
+    result = cont + total;  // This should trigger "did you mean 'count'?" suggestion
+    
+    io.print(result);
+    return 0;
+}
